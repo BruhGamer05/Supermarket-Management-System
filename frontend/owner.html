@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Owner Dashboard - Supermarket Management System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .dashboard {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            padding: 1.5rem;
+        }
+
+        .card h2 {
+            font-size: 1.25rem;
+            border-bottom: 1px solid var(--surface-border);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--surface-border);
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .text-danger {
+            color: var(--danger-color);
+        }
+
+        .text-success {
+            color: var(--success-color);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .logout-btn {
+            background: transparent;
+            border: 1px solid var(--danger-color);
+            color: var(--danger-color);
+        }
+
+        .logout-btn:hover {
+            background: var(--danger-color);
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="dashboard">
+        <header class="header">
+            <div>
+                <h1>Owner Dashboard</h1>
+                <p>Welcome back! Here's what's happening today.</p>
+            </div>
+            <button class="btn logout-btn" onclick="logout()">Sign Out</button>
+        </header>
+
+        <div class="grid">
+            <!-- Top Items -->
+            <div class="glass-panel card">
+                <h2>🏆 Top Selling Items</h2>
+                <table id="topItemsTable">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Revenue (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="2">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Low Stock Alerts -->
+            <div class="glass-panel card">
+                <h2>⚠️ Low Stock Alerts</h2>
+                <table id="lowStockTable">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Current Stock</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="2">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Employee Performance -->
+            <div class="glass-panel card">
+                <h2>⭐ Employee Performance</h2>
+                <table id="employeeTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Bills Handled</th>
+                            <th>Avg Rating</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="3">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Manage Stock Requests (Full Width) -->
+            <div class="glass-panel card" style="grid-column: 1 / -1;">
+                <h2>📨 Manage Customer Stock Requests</h2>
+                <table id="ownerRequestsTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Customer</th>
+                            <th>Item Requested</th>
+                            <th>Qty</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="6">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        // Protect this page: Only 'Owner' allowed
+        if (!checkAuth(['Owner'])) {
+            // checkAuth handles redirect if failed
+        } else {
+            // Load dashboard data
+            loadDashboard();
+        }
+
+        async function loadDashboard() {
+            try {
+                // 1. Fetch Top Items
+                const topItems = await apiFetch('/owner/insights/top-items');
+                const topHtml = topItems.slice(0, 5).map(item => `
+                    <tr>
+                        <td>${item.Item_Name}</td>
+                        <td class="text-success">₹${item.Revenue}</td>
+                    </tr>
+                `).join('');
+                document.querySelector('#topItemsTable tbody').innerHTML = topHtml || '<tr><td colspan="2">No data</td></tr>';
+
+                // 2. Fetch Low Stock
+                const lowStock = await apiFetch('/owner/insights/low-stock');
+                const stockHtml = lowStock.map(item => `
+                    <tr>
+                        <td>${item.Item_Name}</td>
+                        <td class="text-danger"><strong>${item.Total_Stock}</strong> units</td>
+                    </tr>
+                `).join('');
+                document.querySelector('#lowStockTable tbody').innerHTML = stockHtml || '<tr><td colspan="2">All stock healthy!</td></tr>';
+
+                // 3. Fetch Employees
+                const employees = await apiFetch('/owner/insights/employee-performance');
+                const empHtml = employees.map(emp => `
+                    <tr>
+                        <td>${emp.Employee_Name}</td>
+                        <td>${emp.Bills_Handled}</td>
+                        <td>${emp.Avg_Rating ? emp.Avg_Rating + ' ⭐' : 'No ratings'}</td>
+                    </tr>
+                `).join('');
+                document.querySelector('#employeeTable tbody').innerHTML = empHtml || '<tr><td colspan="3">No data</td></tr>';
+
+                // 4. Fetch Stock Requests
+                await loadStockRequests();
+
+            } catch (error) {
+                console.error("Failed to load dashboard:", error);
+            }
+        }
+
+        async function loadStockRequests() {
+            const table = document.querySelector('#ownerRequestsTable tbody');
+            try {
+                const requests = await apiFetch('/customers/stock-requests?status=Pending');
+                if (requests.length === 0) {
+                    table.innerHTML = '<tr><td colspan="6">No pending requests!</td></tr>';
+                    return;
+                }
+
+                table.innerHTML = requests.map(req => {
+                    const itemName = req.Item_Name || req.Requested_Item_Name;
+                    return `
+                        <tr>
+                            <td>${new Date(req.Request_Date).toLocaleDateString()}</td>
+                            <td>${req.Customer_Name} <br><span style="font-size:0.8rem;color:var(--text-secondary)">${req.Phone_Number}</span></td>
+                            <td><strong>${itemName}</strong></td>
+                            <td>${req.Quantity_Requested}</td>
+                            <td style="color: var(--warning-color);">${req.Status}</td>
+                            <td>
+                                <button class="btn btn-sm" style="background:var(--success-color);color:white;padding:0.25rem 0.5rem;font-size:0.8rem;margin-right:0.5rem;" onclick="resolveRequest(${req.Request_ID}, 'Approved')">Approve</button>
+                                <button class="btn btn-sm" style="background:var(--danger-color);color:white;padding:0.25rem 0.5rem;font-size:0.8rem;" onclick="resolveRequest(${req.Request_ID}, 'Rejected')">Reject</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                table.innerHTML = '<tr><td colspan="6">Failed to load requests.</td></tr>';
+            }
+        }
+
+        async function resolveRequest(requestId, newStatus) {
+            if (!confirm(`Are you sure you want to mark this request as ${newStatus}?`)) return;
+            try {
+                await apiFetch(`/customers/stock-requests/${requestId}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ new_status: newStatus, remarks: `${newStatus} by Owner` })
+                });
+                showToast(`Request ${ newStatus }!`, 'success');
+                loadStockRequests(); // Refresh table
+            } catch (error) {
+                // error handled by apiFetch toast
+            }
+        }
+    </script>
+</body>
+
+</html>

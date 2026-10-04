@@ -1,0 +1,16 @@
+# Dev-only MySQL 8.0 (matches the version the schema was designed for).
+# First start auto-runs db/01_schema.sql, 02_views.sql, 03_seed.sql (alphabetical order).
+# Reset to a clean database:  docker compose down -v && docker compose up -d
+services:
+  db:
+    image: mysql:8.0
+    container_name: supermarket_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass   # dev only - never reuse
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db:/docker-entrypoint-initdb.d:ro
+volumes:
+  mysql_data:

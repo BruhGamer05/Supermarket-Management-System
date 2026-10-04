@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Portal - Supermarket Management System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .portal-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        .card {
+            padding: 1.5rem;
+        }
+        .card h2 {
+            font-size: 1.25rem;
+            border-bottom: 1px solid var(--surface-border);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .loyalty-points {
+            font-size: 3rem;
+            font-weight: 600;
+            color: var(--warning-color); /* Gold color for points */
+            text-align: center;
+            margin: 1rem 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        th, td {
+            padding: 0.5rem;
+            text-align: left;
+            border-bottom: 1px solid var(--surface-border);
+        }
+        th {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="portal-container">
+        <header class="header">
+            <div>
+                <h1 id="welcomeTitle">Welcome, Customer</h1>
+                <p>Manage your profile, view loyalty points, and request items.</p>
+            </div>
+            <button class="btn" onclick="logout()" style="background: transparent; border: 1px solid var(--danger-color); color: var(--danger-color);">Sign Out</button>
+        </header>
+
+        <div class="grid">
+            <!-- Loyalty Panel -->
+            <div class="glass-panel card">
+                <h2>✨ My Loyalty Points</h2>
+                <div class="loyalty-points" id="pointsDisplay">0</div>
+                
+                <h3 style="font-size: 1rem; margin-top: 1.5rem;">Recent Transactions</h3>
+                <div style="max-height: 200px; overflow-y: auto;">
+                    <table id="loyaltyTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Change</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="3">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Stock Request Panel -->
+            <div class="glass-panel card">
+                <h2>📦 Request an Item</h2>
+                <p style="font-size: 0.85rem; margin-bottom: 1.5rem;">Can't find what you need? Ask us to stock it!</p>
+                
+                <form id="requestForm">
+                    <div class="form-group">
+                        <label>Item Name</label>
+                        <input type="text" id="reqItemName" class="form-control" required placeholder="e.g. Organic Honey">
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity Wanted</label>
+                        <input type="number" id="reqQty" class="form-control" value="1" min="1" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Submit Request</button>
+                </form>
+            </div>
+            
+            <!-- Requests Status Panel (Spans full width) -->
+            <div class="glass-panel card" style="grid-column: 1 / -1;">
+                <h2>📋 My Previous Requests</h2>
+                <table id="requestsTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Item Requested</th>
+                            <th>Qty</th>
+                            <th>Status</th>
+                            <th>Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="5">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        // Protect this page: Only Customer allowed
+        if (checkAuth(['Customer'])) {
+            loadCustomerData();
+        }
+
+        async function loadCustomerData() {
+            try {
+                // 1. Fetch Profile Name
+                const profile = await apiFetch('/customers/me');
+                document.getElementById('welcomeTitle').textContent = `Welcome, ${profile.First_Name}!`;
+
+                // 2. Fetch Loyalty Points & History
+                const loyalty = await apiFetch('/customers/me/loyalty');
+                document.getElementById('pointsDisplay').textContent = loyalty.balance;
+                
+                const lTable = document.querySelector('#loyaltyTable tbody');
+                if (loyalty.history.length === 0) {
+                    lTable.innerHTML = '<tr><td colspan="3">No transactions yet</td></tr>';
+                } else {
+                    lTable.innerHTML = loyalty.history.map(txn => {
+                        const isEarned = txn.Txn_Type === 'Earned';
+                        const color = isEarned ? 'var(--success-color)' : 'var(--danger-color)';
+                        const sign = isEarned ? '+' : '';
+                        return `
+                            <tr>
+                                <td>${new Date(txn.Txn_Date).toLocaleDateString()}</td>
+                                <td style="color: ${color}; font-weight: 500;">${sign}${txn.Points_Change}</td>
+                                <td>${txn.Txn_Type}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+
+                // 3. Fetch Stock Requests
+                loadRequests();
+
+            } catch (error) {
+                console.error("Failed to load customer data", error);
+            }
+        }
+
+        async function loadRequests() {
+            const rTable = document.querySelector('#requestsTable tbody');
+            try {
+                const requests = await apiFetch('/customers/me/stock-requests');
+                if (requests.length === 0) {
+                    rTable.innerHTML = '<tr><td colspan="5">You have no active requests.</td></tr>';
+                    return;
+                }
+                
+                rTable.innerHTML = requests.map(req => {
+                    // It can either be an existing item (Item_Name) or a brand new one (Requested_Item_Name)
+                    const name = req.Item_Name || req.Requested_Item_Name;
+                    
+                    let statusColor = 'var(--text-primary)';
+                    if (req.Status === 'Approved') statusColor = 'var(--primary-color)';
+                    if (req.Status === 'Fulfilled') statusColor = 'var(--success-color)';
+                    if (req.Status === 'Rejected') statusColor = 'var(--danger-color)';
+
+                    return `
+                        <tr>
+                            <td>${new Date(req.Request_Date).toLocaleDateString()}</td>
+                            <td><strong>${name}</strong></td>
+                            <td>${req.Quantity_Requested}</td>
+                            <td style="color: ${statusColor}; font-weight: 500;">${req.Status}</td>
+                            <td style="color: var(--text-secondary); font-size: 0.8rem;">${req.Remarks || '-'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                rTable.innerHTML = '<tr><td colspan="5">Failed to load requests.</td></tr>';
+            }
+        }
+
+        // Handle Stock Request Form
+        document.getElementById('requestForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const itemName = document.getElementById('reqItemName').value;
+            const qty = document.getElementById('reqQty').value;
+
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+
+            try {
+                await apiFetch('/customers/me/stock-requests', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        requested_item_name: itemName,
+                        quantity_requested: parseInt(qty)
+                    })
+                });
+                
+                showToast('Request submitted successfully!', 'success');
+                document.getElementById('requestForm').reset();
+                loadRequests(); // Refresh the table
+            } catch (error) {
+                // apiFetch shows toast
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Submit Request';
+            }
+        });
+    </script>
+</body>
+</html>

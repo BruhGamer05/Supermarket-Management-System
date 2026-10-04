@@ -1,0 +1,5 @@
+1. Customer requirement for new products
+2. Employee feedback logging better
+3. Loyalty points implementation
+4. Detailed insights for owner
+5. Owner view, employee and customer all in frontend (roles and authentication)

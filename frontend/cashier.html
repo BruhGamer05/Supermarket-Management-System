@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Point of Sale - Supermarket Management System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .pos-container {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+            height: 100vh;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Left Panel - Items */
+        .items-panel, .cart-panel {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 4rem);
+            padding: 1.5rem;
+        }
+
+        .search-bar {
+            margin-bottom: 1.5rem;
+        }
+        
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            overflow-y: auto;
+            flex-grow: 1;
+            padding-right: 10px;
+        }
+
+        .item-card {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid var(--surface-border);
+            padding: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .item-card:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+
+        .item-card h3 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        /* Right Panel - Cart */
+        .cart-items {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 1.5rem;
+        }
+
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--surface-border);
+        }
+
+        .cart-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .qty-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .cart-summary {
+            border-top: 2px solid var(--surface-border);
+            padding-top: 1rem;
+            margin-top: auto;
+        }
+        
+        .cart-summary .form-group { margin-bottom: 1rem; }
+
+        .checkout-btn {
+            width: 100%;
+            margin-top: 1rem;
+            padding: 1rem;
+            font-size: 1.1rem;
+            background: var(--success-color);
+        }
+        .checkout-btn:hover { background: #059669; }
+    </style>
+</head>
+<body>
+
+    <div class="pos-container">
+        <!-- Left Side: Catalog -->
+        <div class="glass-panel items-panel">
+            <header class="header">
+                <h2>📦 Product Catalog</h2>
+                <button class="btn btn-primary" onclick="logout()" style="background: transparent; border: 1px solid var(--danger-color); color: var(--danger-color);">Sign Out</button>
+            </header>
+            
+            <div class="search-bar">
+                <input type="text" id="searchInput" class="form-control" style="width: 100%;" placeholder="Search items by name...">
+            </div>
+
+            <div class="items-grid" id="itemsGrid">
+                <p>Loading items...</p>
+            </div>
+        </div>
+
+        <!-- Right Side: Cart & Checkout -->
+        <div class="glass-panel cart-panel">
+            <h2>🛒 Current Bill</h2>
+            
+            <div class="cart-items" id="cartItems">
+                <p style="color: var(--text-secondary); text-align: center; margin-top: 2rem;">Cart is empty</p>
+            </div>
+
+            <div class="cart-summary">
+                <div class="form-group">
+                    <label>Customer Phone (Leave blank for walk-in)</label>
+                    <input type="text" id="customerPhone" class="form-control" placeholder="e.g. 9820000001">
+                </div>
+                
+                <div class="form-group">
+                    <label>Payment Method</label>
+                    <select id="paymentMethod" class="form-control">
+                        <option value="Cash">Cash</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Card">Card</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="display: flex; gap: 10px; align-items: end;">
+                    <div style="flex-grow: 1;">
+                        <label>Redeem Points</label>
+                        <input type="number" id="redeemPoints" class="form-control" value="0" min="0">
+                    </div>
+                </div>
+
+                <button class="btn checkout-btn" onclick="processCheckout()">Checkout Bill</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        let allItems = [];
+        let cart = {}; // itemId -> { name, qty }
+        let currentUserId = null; 
+
+        // Decode JWT to get Employee ID properly (handling base64url padding)
+        try {
+            const token = localStorage.getItem('token');
+            if (token) {
+                let base64Url = token.split('.')[1];
+                let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                let pad = base64.length % 4;
+                if (pad) base64 += new Array(5 - pad).join('=');
+                const payload = JSON.parse(atob(base64));
+                currentUserId = parseInt(payload.sub);
+            }
+        } catch(e) { console.error("JWT parse failed:", e); }
+
+        // Protect this page: Owner and Employee allowed
+        if (checkAuth(['Owner', 'Employee'])) {
+            loadItems();
+        }
+
+        async function loadItems() {
+            try {
+                allItems = await apiFetch('/items/');
+                renderItems(allItems);
+            } catch (error) {
+                console.error("Failed to load items:", error);
+            }
+        }
+
+        function renderItems(items) {
+            const grid = document.getElementById('itemsGrid');
+            if (items.length === 0) {
+                grid.innerHTML = '<p>No items found.</p>';
+                return;
+            }
+            grid.innerHTML = items.map(item => `
+                <div class="item-card" onclick="addToCart(${item.Item_ID}, '${item.Item_Name.replace(/'/g, "\\'")}', ${item.Total_Stock})">
+                    <div>
+                        <h3>${item.Item_Name}</h3>
+                        <p style="font-size: 0.8rem; margin:0;">${item.Category_Name || 'Uncategorized'}</p>
+                    </div>
+                    <div style="margin-top: 1rem; color: ${item.Total_Stock > 0 ? 'var(--text-secondary)' : 'var(--danger-color)'}">
+                        ${item.Total_Stock} in stock
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Search Filter
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = allItems.filter(i => i.Item_Name.toLowerCase().includes(term));
+            renderItems(filtered);
+        });
+
+        function addToCart(id, name, stock) {
+            if (stock <= 0) {
+                showToast("Item is out of stock!", "error");
+                return;
+            }
+            if (cart[id]) {
+                if (cart[id].qty >= stock) {
+                    showToast("Not enough stock available", "error");
+                    return;
+                }
+                cart[id].qty++;
+            } else {
+                cart[id] = { name, qty: 1, stock };
+            }
+            renderCart();
+        }
+
+        function updateQty(id, delta) {
+            if (!cart[id]) return;
+            const newQty = cart[id].qty + delta;
+            
+            if (newQty <= 0) {
+                delete cart[id];
+            } else if (newQty > cart[id].stock) {
+                showToast("Cannot exceed available stock", "error");
+            } else {
+                cart[id].qty = newQty;
+            }
+            renderCart();
+        }
+
+        function renderCart() {
+            const cartDiv = document.getElementById('cartItems');
+            const items = Object.entries(cart);
+            
+            if (items.length === 0) {
+                cartDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center; margin-top: 2rem;">Cart is empty</p>';
+                return;
+            }
+
+            cartDiv.innerHTML = items.map(([id, data]) => `
+                <div class="cart-item">
+                    <div style="flex-grow:1;">
+                        <div style="font-weight: 500;">${data.name}</div>
+                    </div>
+                    <div class="cart-controls">
+                        <button class="qty-btn" onclick="updateQty(${id}, -1)">-</button>
+                        <span style="width: 24px; text-align: center;">${data.qty}</span>
+                        <button class="qty-btn" onclick="updateQty(${id}, 1)">+</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function processCheckout() {
+            const itemIds = Object.keys(cart);
+            if (itemIds.length === 0) {
+                showToast("Cart is empty!", "error");
+                return;
+            }
+
+            const payload = {
+                employee_id: currentUserId,
+                payment_method: document.getElementById('paymentMethod').value,
+                redeem_points: parseInt(document.getElementById('redeemPoints').value) || 0,
+                phone: document.getElementById('customerPhone').value || null,
+                items: itemIds.map(id => ({ item_id: parseInt(id), qty: cart[id].qty }))
+            };
+
+            const btn = document.querySelector('.checkout-btn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+
+            try {
+                const response = await apiFetch('/bills/', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                
+                showToast(`Bill #${response.Bill_ID} created! Amount: ₹${response.Amount_Payable}`, "success");
+                
+                // Reset everything
+                cart = {};
+                renderCart();
+                document.getElementById('customerPhone').value = '';
+                document.getElementById('redeemPoints').value = '0';
+                loadItems(); // Refresh stock levels
+
+            } catch (error) {
+                // apiFetch handles toast
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Checkout Bill';
+            }
+        }
+    </script>
+</body>
+</html>

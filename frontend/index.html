@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Supermarket Management System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        body {
+            justify-content: center;
+            align-items: center;
+        }
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 2.5rem;
+            text-align: center;
+        }
+        .login-container h1 {
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+        .login-container p {
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+        .form-group {
+            text-align: left;
+        }
+        .btn-submit {
+            width: 100%;
+            margin-top: 1rem;
+            font-size: 1.1rem;
+        }
+        .demo-credentials {
+            margin-top: 2rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--surface-border);
+            padding-top: 1rem;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glass-panel login-container">
+        <h1>Supermarket System</h1>
+        <p>Sign in to access your dashboard</p>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" class="form-control" required autocomplete="username" placeholder="e.g. owner">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" class="form-control" required autocomplete="current-password" placeholder="••••••••">
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-submit">Sign In</button>
+        </form>
+
+        <div class="demo-credentials">
+            <strong>Demo Accounts:</strong><br>
+            Owner: <code>owner</code> / <code>owner123</code><br>
+            Cashier: <code>ramesh_emp</code> / <code>ramesh123</code><br>
+            Customer: <code>anil_cust</code> / <code>anil123</code>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const btn = document.querySelector('.btn-submit');
+            
+            btn.textContent = 'Signing in...';
+            btn.disabled = true;
+
+            try {
+                const data = await apiFetch('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password })
+                });
+
+                // Store credentials
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('role', data.role);
+                
+                showToast('Login successful!', 'success');
+                
+                // Redirect based on role
+                setTimeout(() => {
+                    if (data.role === 'Owner') {
+                        window.location.href = 'owner.html';
+                    } else if (data.role === 'Employee') {
+                        window.location.href = 'cashier.html';
+                    } else if (data.role === 'Customer') {
+                        window.location.href = 'customer.html';
+                    } else {
+                        window.location.href = 'index.html';
+                    }
+                }, 1000);
+
+            } catch (error) {
+                // Error toast already handled by api.js
+                btn.textContent = 'Sign In';
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
