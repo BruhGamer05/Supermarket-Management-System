@@ -30,27 +30,36 @@ Mark items [x] when done. Stop at the end of each phase and show the user before
 - [x] Insight views: low stock per item, batches expiring within 30 days / expired, sales by day and month, sales by
   category, top items, top customers, profit per item, employee average rating and bills handled, product demand
   from Stock_Request, restock list (low-stock item with its suppliers from Procures).
-- [ ] SQL tests, including two simultaneous bills competing for the last units (must not oversell).
+- [ ] SQL stress tests, including two simultaneous bills competing for the last units (must not oversell).
 
 ## Phase 3 - Backend API
 - [x] Ask the user for the stack (FastAPI or Express) and DB driver; set up project structure and `.env` (not committed).
-- [x] Auth: login endpoint, bcrypt hashes, token or session, role guard (Owner/Employee/Customer).
-- [x] Script to create the first Owner user and sample Employee/Customer users.
+- [x] Auth: login endpoint, bcrypt hashes, JWT tokens, role guard (Owner/Employee/Customer).
+- [x] Script to create the first Owner user and sample Employee/Customer users (`create_users.py`).
 - [x] Endpoints by role: items and search (name, category, HSN), batches, billing, stock requests, loyalty,
   feedback, suppliers, employees, owner insights.
 - [x] Validate input; return clear errors; use parameterized queries only (no string-built SQL).
 - [x] Short API doc (`API.md`) listing endpoints, roles and example requests.
+- [x] Frontend served statically from `/app` via FastAPI mount (`app.mount("/app", StaticFiles(directory="frontend"))`).
 
 ## Phase 4 - Testing and demo readiness
 - [ ] Automated tests for billing math (GST rounding), stock deduction, loyalty, role permissions.
-- [ ] A demo script/data set covering every TA change.
+- [x] Demo script (`DEMO.md`) covering full TA walkthrough — role-by-role flow, startup checklist, viva Q&A answers.
+- [x] One-click startup script (`start_demo.bat`): starts MySQL80 service (as Admin), opens browser to frontend + Swagger, opens MySQL live shell in a separate terminal, starts Uvicorn server.
 
-## Phase 5 - Frontend (later, after the TA meet)
-- [x] Owner and Employee views with login.
-- [ ] Customer view with login (optional for demo).
+## Phase 5 - Frontend (Vanilla HTML/CSS/JS)
+- [x] Shared design system (`frontend/css/style.css`) — glassmorphism dark theme, CSS variables, toast notifications.
+- [x] Login page (`frontend/index.html`) — role-aware redirect after JWT auth.
+- [x] Owner dashboard (`frontend/owner.html`) — KPI stats, Top Items, Low Stock, Employee Performance, Stock Request management (Approve/Reject).
+- [x] Cashier / Employee POS (`frontend/cashier.html`) — item catalog, cart, phone-based customer lookup, checkout.
+- [x] Customer portal (`frontend/customer.html`) — loyalty points + history, stock request submission + tracking.
+- [x] Shared API helper (`frontend/js/api.js`) — JWT header injection, 401 toast handling, prevents redirect on login page.
 
 ## Phase 6 - Submission documents
-- [ ] Regenerate the ER diagram and relational schema from `SCHEMA.md` (the old Assignment PDFs are outdated).
+- [x] Relational schema regenerated from live DB in MySQL `describe` format → `new_schema.md`.
+- [x] `README.md` written — setup instructions, demo accounts, tech stack, Docker and native MySQL options.
+- [x] GitHub repository created: https://github.com/BruhGamer05/Supermarket-Management-System
+- [ ] Regenerate ER diagram (visual) to match final schema (old Assignment PDFs are outdated).
 
 ## Open questions for the user
 See "Still open" in PROJECT.md.
