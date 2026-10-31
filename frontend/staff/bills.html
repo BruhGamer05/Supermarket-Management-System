@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bills - Staff</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Bills</div>
+        <div class="page-header__desc">Bills you have processed.</div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="table-toolbar">
+        <input type="search" id="searchInput" class="form-control" style="width:220px;" placeholder="Search by bill number...">
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, dateTime } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+
+  if (!requireRole(['Owner', 'Employee'])) throw new Error();
+  renderShell();
+
+  let tableCtrl;
+
+  async function load() {
+    const container = document.getElementById('tableContainer');
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      const bills = await api.get('/bills/');
+      tableCtrl = buildTable(container, bills, [
+        { key: 'Bill_ID',       label: 'Bill no.',    render: r => `<strong>#${esc(r.Bill_ID)}</strong>` },
+        { key: 'Date_Time',     label: 'Date & time', render: r => esc(dateTime(r.Date_Time)) },
+        { key: 'Customer_Name', label: 'Customer',    render: r => esc(r.Customer_Name || 'Walk-in') },
+        { key: 'Amount_Payable',label: 'Amount payable', numeric: true, render: r => inr(r.Amount_Payable) },
+        { key: 'Payment_Method',label: 'Payment' },
+        { key: '_inv', label: '', sortable: false,
+          render: r => `<a href="/app/invoice.html?id=${esc(r.Bill_ID)}" class="btn btn-secondary btn-sm" target="_blank">Invoice</a>` },
+      ], { emptyMsg: 'No bills found.' });
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  document.getElementById('searchInput').addEventListener('input', e => {
+    if (!tableCtrl) return;
+    // Re-fetch and filter client-side (small dataset)
+    const term = e.target.value.toLowerCase();
+    api.get('/bills/').then(bills => {
+      const filtered = bills.filter(b => String(b.Bill_ID).includes(term));
+      tableCtrl.update(filtered);
+    });
+  });
+
+  load();
+</script>
+</body>
+</html>
+

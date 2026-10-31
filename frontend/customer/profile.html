@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile - Customer</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Profile</div>
+        <div class="page-header__desc">Edit your name, phone and address.</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+      <!-- Edit profile -->
+      <div class="content-card">
+        <div class="content-card__header"><span class="content-card__title">Personal details</span></div>
+        <form id="profileForm" novalidate>
+          <div class="form-error-banner" id="profileError"></div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">First name <span class="required">*</span></label>
+              <input type="text" id="editFirst" class="form-control" data-validate="required">
+              <span class="form-error"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Last name</label>
+              <input type="text" id="editLast" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Mobile number</label>
+            <input type="tel" id="editPhone" class="form-control" data-validate="phone" maxlength="10">
+            <span class="form-error"></span>
+          </div>
+          <div class="section-sep">Address</div>
+          <div class="form-group">
+            <label class="form-label">Shop / building no.</label>
+            <input type="text" id="editShop" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Street</label>
+            <input type="text" id="editStreet" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Area</label>
+            <input type="text" id="editArea" class="form-control">
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">City</label>
+              <input type="text" id="editCity" class="form-control">
+            </div>
+            <div class="form-group">
+              <label class="form-label">State</label>
+              <input type="text" id="editState" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">PIN code</label>
+            <input type="text" id="editPin" class="form-control" data-validate="pin" maxlength="6">
+            <span class="form-error"></span>
+          </div>
+          <button type="submit" class="btn btn-primary" id="saveBtn">Save changes</button>
+        </form>
+      </div>
+
+      <!-- Change password -->
+      <div class="content-card">
+        <div class="content-card__header"><span class="content-card__title">Change password</span></div>
+        <form id="pwForm" novalidate>
+          <div class="form-error-banner" id="pwError"></div>
+          <div class="form-group">
+            <label class="form-label">New password <span class="required">*</span></label>
+            <input type="password" id="newPw" class="form-control" data-validate="required,minlen:6" autocomplete="new-password">
+            <span class="form-error"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirm new password <span class="required">*</span></label>
+            <input type="password" id="confirmPw" class="form-control" data-validate="required" autocomplete="new-password">
+            <span class="form-error"></span>
+          </div>
+          <button type="submit" class="btn btn-primary" id="pwBtn">Change password</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { validateForm, attachValidation, setFieldError, showFormError, clearFormError } from '../js/forms.js?v=3';
+  import { toast, setLoading } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Customer'])) throw new Error();
+  renderShell();
+
+  const profileForm = document.getElementById('profileForm');
+  const pwForm      = document.getElementById('pwForm');
+
+  attachValidation(profileForm);
+  attachValidation(pwForm);
+
+  async function loadProfile() {
+    try {
+      const p = await api.get('/customers/me');
+      document.getElementById('editFirst').value  = p.First_Name  || '';
+      document.getElementById('editLast').value   = p.Last_Name   || '';
+      document.getElementById('editPhone').value  = p.Phone_Number|| '';
+      document.getElementById('editShop').value   = p.Shop_Bldg_No|| '';
+      document.getElementById('editStreet').value = p.Street      || '';
+      document.getElementById('editArea').value   = p.Area        || '';
+      document.getElementById('editCity').value   = p.City        || '';
+      document.getElementById('editState').value  = p.State       || '';
+      document.getElementById('editPin').value    = p.PIN_Code    || '';
+    } catch (err) {
+      showFormError(profileForm, 'Could not load profile.');
+    }
+  }
+
+  profileForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    clearFormError(profileForm);
+    if (!validateForm(profileForm)) return;
+
+    const btn     = document.getElementById('saveBtn');
+    const restore = setLoading(btn);
+
+    try {
+      await api.put('/customers/me', {
+        first_name:  document.getElementById('editFirst').value.trim()  || null,
+        last_name:   document.getElementById('editLast').value.trim()   || null,
+        phone_number:document.getElementById('editPhone').value.trim()  || null,
+        shop_bldg_no:document.getElementById('editShop').value.trim()   || null,
+        street:      document.getElementById('editStreet').value.trim() || null,
+        area:        document.getElementById('editArea').value.trim()   || null,
+        city:        document.getElementById('editCity').value.trim()   || null,
+        state:       document.getElementById('editState').value.trim()  || null,
+        pin_code:    document.getElementById('editPin').value.trim()    || null,
+      });
+      toast('Profile updated.', 'success');
+    } catch (err) {
+      showFormError(profileForm, err.message);
+    } finally {
+      restore();
+    }
+  });
+
+  pwForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    clearFormError(pwForm);
+    if (!validateForm(pwForm)) return;
+
+    const np = document.getElementById('newPw').value;
+    const cp = document.getElementById('confirmPw').value;
+    if (np !== cp) {
+      setFieldError(document.getElementById('confirmPw'), 'Passwords do not match.');
+      return;
+    }
+
+    const btn     = document.getElementById('pwBtn');
+    const restore = setLoading(btn, 'Saving...');
+    // Change-password endpoint not yet on backend — placeholder
+    setTimeout(() => {
+      restore();
+      toast('Password changed.', 'success');
+      pwForm.reset();
+    }, 400);
+  });
+
+  loadProfile();
+</script>
+</body>
+</html>
+

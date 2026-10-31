@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customers - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Customers</div>
+        <div class="page-header__desc">View customer profiles, loyalty points balances, and purchase activity.</div>
+      </div>
+      <button class="btn btn-secondary" id="exportBtn">Export CSV</button>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="kpi-card__label">Total customers</div>
+        <div class="kpi-card__value" id="kpiCount">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__label">Total loyalty points outstanding</div>
+        <div class="kpi-card__value" id="kpiPoints">—</div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="table-toolbar">
+        <input type="search" id="searchInput" class="form-control" style="width:280px;" placeholder="Search by name, phone or city...">
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+  <!-- Customer Detail Drawer -->
+  <div id="drawerOverlay" style="display:none;">
+    <div class="drawer-overlay" id="drawerBg"></div>
+    <div class="drawer">
+      <div class="drawer__header">
+        <strong id="drawerTitle">Customer record</strong>
+        <button class="modal__close" id="drawerClose">&times;</button>
+      </div>
+      <div class="drawer__body">
+        <div id="drawerDetails"></div>
+        <div class="section-sep">Recent purchases</div>
+        <div id="drawerBills"></div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, num, date } from '../js/format.js?v=3';
+  import { buildTable, exportCsv } from '../js/table.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let allCustomers = [];
+  let allBills = [];
+  let tableCtrl;
+  const container = document.getElementById('tableContainer');
+
+  const columns = [
+    { key: 'Customer_ID',    label: 'ID' },
+    { key: 'First_Name',     label: 'Name',
+      render: r => `<strong>${esc(`${r.First_Name} ${r.Last_Name || ''}`.trim())}</strong>` },
+    { key: 'Phone_Number',   label: 'Mobile', render: r => esc(r.Phone_Number || '—') },
+    { key: 'City',           label: 'City',   render: r => esc(r.City || '—') },
+    { key: 'Loyalty_Points', label: 'Loyalty points', numeric: true, render: r => num(r.Loyalty_Points) },
+    { key: '_action',        label: '', sortable: false,
+      render: r => `<button class="btn btn-secondary btn-sm view-btn" data-id="${esc(r.Customer_ID)}">View details</button>` }
+  ];
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      const [customers, bills] = await Promise.all([
+        api.get('/customers/'),
+        api.get('/bills/'),
+      ]);
+      allCustomers = customers;
+      allBills = bills;
+
+      document.getElementById('kpiCount').textContent = num(customers.length);
+      const totalPts = customers.reduce((sum, c) => sum + Number(c.Loyalty_Points || 0), 0);
+      document.getElementById('kpiPoints').textContent = `${num(totalPts)} pts (${inr(totalPts)})`;
+
+      tableCtrl = buildTable(container, allCustomers, columns, {
+        emptyMsg: 'No customers found.',
+      });
+
+      container.addEventListener('click', e => {
+        const btn = e.target.closest('.view-btn');
+        if (!btn) return;
+        const cust = allCustomers.find(c => String(c.Customer_ID) === btn.dataset.id);
+        if (cust) openDrawer(cust);
+      });
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  // Search filter
+  document.getElementById('searchInput').addEventListener('input', e => {
+    const term = e.target.value.toLowerCase().trim();
+    const filtered = allCustomers.filter(c =>
+      `${c.First_Name} ${c.Last_Name || ''}`.toLowerCase().includes(term) ||
+      (c.Phone_Number || '').includes(term) ||
+      (c.City || '').toLowerCase().includes(term)
+    );
+    if (tableCtrl) tableCtrl.update(filtered);
+  });
+
+  // Export CSV
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    exportCsv(allCustomers, [
+      { key: 'Customer_ID',    label: 'Customer ID' },
+      { key: 'First_Name',     label: 'First Name' },
+      { key: 'Last_Name',      label: 'Last Name' },
+      { key: 'Phone_Number',   label: 'Mobile' },
+      { key: 'City',           label: 'City' },
+      { key: 'Loyalty_Points', label: 'Loyalty Points' },
+    ], 'customers.csv');
+  });
+
+  // Drawer
+  function openDrawer(cust) {
+    document.getElementById('drawerTitle').textContent = `${cust.First_Name} ${cust.Last_Name || ''}`.trim();
+    const details = document.getElementById('drawerDetails');
+    details.innerHTML = `
+      <table style="font-size:13px; width:100%; margin-bottom:16px;">
+        <tr><td class="text-muted" style="width:130px; padding:6px 0;">Customer ID</td><td>${esc(cust.Customer_ID)}</td></tr>
+        <tr><td class="text-muted" style="padding:6px 0;">Mobile number</td><td>${esc(cust.Phone_Number || '—')}</td></tr>
+        <tr><td class="text-muted" style="padding:6px 0;">Loyalty points</td><td><strong>${num(cust.Loyalty_Points)}</strong> (${inr(cust.Loyalty_Points)} value)</td></tr>
+        <tr><td class="text-muted" style="padding:6px 0;">City</td><td>${esc(cust.City || '—')}</td></tr>
+      </table>`;
+
+    // Filter bills for this customer by matching phone or customer name
+    const custBills = allBills.filter(b =>
+      (cust.Phone_Number && b.Phone_Number === cust.Phone_Number) ||
+      (b.Customer_Name && b.Customer_Name.trim().toLowerCase() === `${cust.First_Name} ${cust.Last_Name || ''}`.trim().toLowerCase())
+    );
+
+    const billsContainer = document.getElementById('drawerBills');
+    if (custBills.length === 0) {
+      billsContainer.innerHTML = '<p class="text-faint" style="font-size:13px;">No recorded purchase bills for this customer.</p>';
+    } else {
+      const rows = custBills.map(b => `
+        <tr>
+          <td><a href="/app/invoice.html?id=${esc(b.Bill_ID)}" target="_blank">#${esc(b.Bill_ID)}</a></td>
+          <td>${esc(date(b.Date_Time))}</td>
+          <td class="text-right">${inr(b.Amount_Payable)}</td>
+        </tr>`).join('');
+      billsContainer.innerHTML = `
+        <table>
+          <thead>
+            <tr><th>Bill</th><th>Date</th><th class="text-right">Amount</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    document.getElementById('drawerOverlay').style.display = '';
+  }
+
+  function closeDrawer() {
+    document.getElementById('drawerOverlay').style.display = 'none';
+  }
+
+  document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+  document.getElementById('drawerBg').addEventListener('click', closeDrawer);
+
+  load();
+</script>
+</body>
+</html>
+

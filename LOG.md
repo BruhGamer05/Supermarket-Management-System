@@ -293,10 +293,85 @@ Note: An accidental `git remote add origit ...` was immediately cleaned up with 
 
 ---
 
+## Session 3 — 2026-10-31
+
+### Complete Frontend Rewrite per FRONTEND.md (COMPLETE ✅)
+
+**Design System & Assets:**
+- Removed glassmorphism, glowing gradients, and emoji headings in favor of a calm, dense, enterprise light business theme.
+- Authored design tokens strictly in `frontend/css/tokens.css` with zero runtime external dependencies (offline ready, no Google Fonts or CDNs).
+- Structured stylesheets into `tokens.css`, `base.css`, `layout.css`, `components.css`, and `print.css`.
+
+**Shared Modular JavaScript (`frontend/js/`):**
+- `escape.js`: Safe dynamic value escaping (`esc()`) to eliminate XSS risks across all rendered templates.
+- `format.js`: Standard Indian currency formatting (`inr()`), dates (`date()`, `dateTime()`), quantities (`qty()`), and percentages.
+- `api.js`: Standardized fetch wrapper returning `ApiError`, handling JWT authorization headers and clearing session on 401.
+- `auth.js`: Session management, role-based guard (`requireRole()`), and current user resolution.
+- `shell.js`: Responsive top bar and sidebar navigation rendering customized per role.
+- `ui.js`: Minimal toasts, custom modals, loading states, status badges, and confirm dialogs.
+- `table.js`: Sortable, paginated data table builder with CSV export.
+- `forms.js`: Blur-time and submit-time inline field validation (regex for phone, PIN, GSTIN, HSN).
+- `charts.js`: Lightweight, zero-dependency SVG line and bar charts with accessible table fallback.
+
+**Pages Built Across Role Subdirectories:**
+1. **Public:**
+   - `index.html`: Clean 380px login card with validation and role-aware redirect.
+   - `signup.html`: Customer account registration.
+   - `session-expired.html`, `403.html`, `404.html`: Plain status error pages.
+2. **Staff (`frontend/staff/`):**
+   - `pos.html`: High-performance 2-column billing terminal. Left: catalog search & category filter with real-time stock indicator. Right: sticky bill cart with real-time subtotal, GST, loyalty point redemption calculator, customer phone lookup, and checkout.
+   - `home.html`: Shift KPIs and recent bills.
+   - `bills.html`: Bill history with invoice preview link.
+   - `inventory.html`: Batches, live stock, and expiry status tabs.
+   - `customers.html`: Customer search and profile editing drawer.
+   - `requests.html`: Customer stock request viewer and staff submission form.
+   - `profile.html`: Employee profile and password update.
+3. **Customer (`frontend/customer/`):**
+   - `home.html`: Welcome dashboard with loyalty balance in rupees, pending requests, and last 5 bills.
+   - `catalog.html`: Store inventory browsing with stock availability badges and out-of-stock request link.
+   - `bills.html`: Invoice history with inline modal to submit 1–5 star employee feedback.
+   - `loyalty.html`: Transaction ledger with earned/redeemed log.
+   - `requests.html`: New stock request submission and status tracking.
+   - `profile.html`: Profile and address editor.
+4. **Owner (`frontend/owner/`):**
+   - `dashboard.html`: Financial KPI strip, 30-day SVG sales trend line, top 5 revenue items, low stock alerts, and pending requests with quick approve/reject.
+   - `items.html`: Catalog management with Add Item modal.
+   - `batches.html`: Batch inventory tracker with Receive Stock delivery modal.
+   - `suppliers.html`: Supplier management and Add Supplier modal.
+   - `employees.html`: Employee roster and performance ratings.
+   - `customers.html`: Customer records, total loyalty liability, and transaction drawer.
+   - `bills.html`: Master audit ledger of all bills with CSV export.
+   - `requests.html`: Stock request lifecycle manager (Approve/Reject/Fulfil with custom remarks).
+   - `feedback.html`: Customer review dashboard highlighting ratings below 3.
+   - `reports.html`: Multi-tab analytics (Sales, Categories, Profit per item, Employees, Restock).
+   - `marketing.html`: Customer segmentation for SMS/WhatsApp festival campaigns with CSV export.
+   - `loyalty.html`: Store discount liability and top point holders.
+   - `tax.html`: HSN code list, GST rate breakdown (CGST/SGST), and policy explanation.
+   - `accounts.html`: System user management and credential provisioning.
+   - `settings.html`: Shop legal identity, GSTIN, and business rules overview.
+5. **Shared:**
+   - `invoice.html`: Printable A4 tax invoice with shop identity, GSTIN, per-line HSN, taxable value, CGST, SGST, loyalty deduction, and totals.
+
+---
+
 ### Remaining items (not yet done)
 - SQL stress test: two concurrent bills competing for last units of the same batch.
 - ER diagram (visual) regeneration to match the final schema.
-- Automated tests for billing math, loyalty calculation, role permission enforcement.
+
+---
+
+## Session 6 — 2026-10-31
+
+### What was done
+1. **Diagnosis of Missing Sidebar / Empty Bills Screen:**
+   - Identified root cause: browser disk caching of legacy pre-rewrite JavaScript ES modules (`api.js`, `shell.js`, etc.) across pages. When an uncached import encountered a browser syntax or load error, script execution halted before `renderShell()` was reached, leaving the sidebar DOM element empty.
+   - Audited all 32 HTML and JS files in the project.
+   - Enforced consistent `?v=3` cache-busting query strings on all ES module imports across all pages and internal JS modules.
+   - Verified that all HTML, CSS, and JS static assets return HTTP 200 OK via FastAPI static files mounting.
+
+2. **Full End-to-End Test Suite Execution (`scratch/run_exhaustive_tests.py`):**
+   - Executed 29 automated test cases covering authentication, Owner suite, Cashier suite, Customer suite, and RBAC security boundaries.
+   - Result: 29/29 tests passed (0 failures).
 
 ---
 

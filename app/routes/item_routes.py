@@ -62,7 +62,7 @@ def list_batches(
     """List batches. Filter by item or show only batches with stock > 0."""
     cur = db.cursor(dictionary=True)
     sql = """
-        SELECT b.Batch_ID, i.Item_Name, s.Supplier_Name,
+        SELECT b.Batch_ID, b.Item_ID, i.Item_Name, s.Supplier_Name,
                b.HSN_Code, h.GST_Percentage,
                b.Purchase_Price, b.Wholesale_Price,
                b.Live_Stock, b.Received_Date, b.Expiry_Date

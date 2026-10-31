@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock requests - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Stock requests</div>
+        <div class="page-header__desc">Manage customer requests. Approve, reject or mark as fulfilled.</div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="tabs" id="tabs">
+        <button class="tab is-active" data-status="">All</button>
+        <button class="tab" data-status="Pending">Pending</button>
+        <button class="tab" data-status="Approved">Approved</button>
+        <button class="tab" data-status="Rejected">Rejected</button>
+        <button class="tab" data-status="Fulfilled">Fulfilled</button>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+  <!-- Remark modal -->
+  <div id="remarkOverlay" style="display:none;" class="modal-overlay">
+    <div class="modal">
+      <div class="modal__header">
+        <span class="modal__title" id="remarkTitle">Action</span>
+        <button class="modal__close" id="remarkClose">&times;</button>
+      </div>
+      <div class="modal__body">
+        <div class="form-group">
+          <label class="form-label">Remarks (optional)</label>
+          <textarea id="remarkText" class="form-control" rows="3" placeholder="e.g. Will stock by next week"></textarea>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn-secondary" id="remarkCancel">Cancel</button>
+        <button class="btn btn-primary" id="remarkConfirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { date } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { toast, badge } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let tableCtrl;
+  let pendingAction = null; // { requestId, newStatus }
+  const container = document.getElementById('tableContainer');
+
+  async function loadRequests(status = '') {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      const url = status ? `/customers/stock-requests?status=${encodeURIComponent(status)}` : '/customers/stock-requests';
+      const data = await api.get(url);
+
+      tableCtrl = buildTable(container, data, [
+        { key: 'Request_Date',  label: 'Date', render: r => esc(date(r.Request_Date)) },
+        { key: 'Customer_Name', label: 'Customer',
+          render: r => `${esc(r.Customer_Name)}<br><span class="text-faint">${esc(r.Phone_Number || '')}</span>` },
+        { key: 'Item_Name',     label: 'Item requested',
+          render: r => `<strong>${esc(r.Item_Name || r.Requested_Item_Name || '—')}</strong>` },
+        { key: 'Quantity_Requested', label: 'Qty', numeric: true },
+        { key: 'Status',        label: 'Status', render: r => badge(r.Status) },
+        { key: 'Handled_By_Name', label: 'Handled by', render: r => esc(r.Handled_By_Name || '—') },
+        { key: 'Remarks',       label: 'Remarks', render: r => esc(r.Remarks || '—') },
+        { key: '_actions', label: '', sortable: false,
+          render: r => {
+            if (r.Status === 'Fulfilled') return '';
+            const approveBtn = r.Status !== 'Approved'
+              ? `<button class="btn btn-secondary btn-sm action-btn" data-id="${esc(r.Request_ID)}" data-action="Approved" style="margin-right:4px;">Approve</button>`
+              : '';
+            const rejectBtn = r.Status !== 'Rejected'
+              ? `<button class="btn btn-danger btn-sm action-btn" data-id="${esc(r.Request_ID)}" data-action="Rejected">Reject</button>`
+              : '';
+            const fulfillBtn = r.Status === 'Approved'
+              ? `<button class="btn btn-secondary btn-sm action-btn" data-id="${esc(r.Request_ID)}" data-action="Fulfilled" style="margin-left:4px;">Fulfil</button>`
+              : '';
+            return approveBtn + rejectBtn + fulfillBtn;
+          },
+        },
+      ], { emptyMsg: 'No requests found.' });
+
+      // Wire action buttons
+      container.addEventListener('click', e => {
+        const btn = e.target.closest('.action-btn');
+        if (!btn) return;
+        openRemarkModal(btn.dataset.id, btn.dataset.action);
+      });
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div></div>`;
+    }
+  }
+
+  // Tab switching
+  document.getElementById('tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('is-active'));
+    tab.classList.add('is-active');
+    loadRequests(tab.dataset.status);
+  });
+
+  // Remark modal
+  function openRemarkModal(requestId, newStatus) {
+    pendingAction = { requestId, newStatus };
+    document.getElementById('remarkTitle').textContent = `Mark as ${newStatus}`;
+    document.getElementById('remarkText').value = '';
+    document.getElementById('remarkConfirm').className = 'btn ' + (newStatus === 'Rejected' ? 'btn-danger-filled' : 'btn-primary');
+    document.getElementById('remarkConfirm').textContent = newStatus === 'Rejected' ? 'Reject' : 'Confirm';
+    document.getElementById('remarkOverlay').style.display = 'flex';
+  }
+
+  function closeRemarkModal() {
+    document.getElementById('remarkOverlay').style.display = 'none';
+    pendingAction = null;
+  }
+
+  document.getElementById('remarkClose').addEventListener('click', closeRemarkModal);
+  document.getElementById('remarkCancel').addEventListener('click', closeRemarkModal);
+
+  document.getElementById('remarkConfirm').addEventListener('click', async () => {
+    if (!pendingAction) return;
+    const { requestId, newStatus } = pendingAction;
+    const remarks = document.getElementById('remarkText').value.trim() || `${newStatus} by Owner`;
+
+    try {
+      await api.patch(`/customers/stock-requests/${requestId}`, { new_status: newStatus, remarks });
+      toast(`Request ${newStatus.toLowerCase()}.`, 'success');
+      closeRemarkModal();
+      // Reload current tab
+      const activeTab = document.querySelector('.tab.is-active');
+      loadRequests(activeTab?.dataset.status || '');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  loadRequests();
+</script>
+</body>
+</html>
+

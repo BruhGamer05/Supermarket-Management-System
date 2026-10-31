@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catalog - Customer</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Catalog</div>
+        <div class="page-header__desc">Browse what's available in store. Prices exclude GST.</div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="table-toolbar">
+        <input type="search" id="searchInput" class="form-control" style="width:240px;" placeholder="Search items...">
+        <select id="categoryFilter" class="form-control" style="width:180px;">
+          <option value="">All categories</option>
+        </select>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, percent } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { badge } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Customer'])) throw new Error();
+  renderShell();
+
+  let allItems = [];
+  let tableCtrl;
+  const container = document.getElementById('tableContainer');
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      const [items, batches, cats] = await Promise.all([
+        api.get('/items/'),
+        api.get('/items/batches?in_stock_only=false'),
+        api.get('/items/categories'),
+      ]);
+
+      // Map best batch onto item
+      const batchByItem = {};
+      batches.forEach(b => {
+        const existing = batchByItem[b.Item_Name];
+        if (!existing || (b.Live_Stock > 0 && !existing.Live_Stock)) {
+          batchByItem[b.Item_Name] = b;
+        }
+      });
+
+      allItems = items.map(item => {
+        const b = batchByItem[item.Item_Name] || {};
+        const stock = Number(item.Total_Stock);
+        const avail = stock > 20 ? 'In stock' : stock > 0 ? 'Low' : 'Out of stock';
+        return { ...item, Wholesale_Price: b.Wholesale_Price, GST_Percentage: b.GST_Percentage, _avail: avail };
+      });
+
+      // Categories
+      const catSel = document.getElementById('categoryFilter');
+      cats.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.Category_ID;
+        opt.textContent = c.Category_Name;
+        catSel.appendChild(opt);
+      });
+
+      renderTable(allItems);
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load catalog</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  function renderTable(data) {
+    tableCtrl = buildTable(container, data, [
+      { key: 'Item_Name',      label: 'Item' },
+      { key: 'Category_Name',  label: 'Category', render: r => esc(r.Category_Name || '—') },
+      { key: 'Wholesale_Price',label: 'Price (ex-GST)', numeric: true,
+        render: r => r.Wholesale_Price != null ? inr(r.Wholesale_Price) : '—' },
+      { key: 'GST_Percentage', label: 'GST %', numeric: true,
+        render: r => r.GST_Percentage != null ? percent(r.GST_Percentage, 0) : '—' },
+      { key: '_avail',         label: 'Availability',
+        render: r => badge(r._avail) },
+      { key: '_action', label: '', sortable: false,
+        render: r => r._avail === 'Out of stock'
+          ? `<a href="/app/customer/requests.html" class="btn btn-secondary btn-sm">Request this item</a>`
+          : '' },
+    ], { emptyMsg: 'No items match your search.' });
+  }
+
+  function applyFilters() {
+    const term = document.getElementById('searchInput').value.toLowerCase();
+    const cat  = document.getElementById('categoryFilter').value;
+    const filtered = allItems.filter(i =>
+      i.Item_Name.toLowerCase().includes(term) &&
+      (cat === '' || String(i.Category_ID) === cat)
+    );
+    if (tableCtrl) tableCtrl.update(filtered);
+    else renderTable(filtered);
+  }
+
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+  document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+
+  load();
+</script>
+</body>
+</html>
+

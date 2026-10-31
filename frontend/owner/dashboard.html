@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Dashboard</div>
+        <div class="page-header__desc">Business overview and live metrics.</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="refreshBtn">Refresh data</button>
+    </div>
+
+    <!-- KPI strip -->
+    <div class="kpi-strip" id="kpiStrip">
+      <div class="kpi-card"><div class="kpi-card__label">Total bills</div><div class="kpi-card__value" id="kpiTotalBills">—</div></div>
+      <div class="kpi-card"><div class="kpi-card__label">Low stock items</div><div class="kpi-card__value" id="kpiLowStock">—</div></div>
+      <div class="kpi-card"><div class="kpi-card__label">Pending requests</div><div class="kpi-card__value" id="kpiPending">—</div></div>
+      <div class="kpi-card"><div class="kpi-card__label">Expiring batches</div><div class="kpi-card__value" id="kpiExpiring">—</div></div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px;">
+      <!-- Sales trend chart -->
+      <div class="content-card">
+        <div class="content-card__header">
+          <span class="content-card__title">Sales — last 30 days</span>
+        </div>
+        <div id="salesChart" style="min-height:220px;"><div class="state-block"><span class="spinner"></span></div></div>
+      </div>
+
+      <!-- Top 5 items -->
+      <div class="content-card">
+        <div class="content-card__header">
+          <span class="content-card__title">Top 5 items by revenue</span>
+          <a href="/app/owner/reports.html" class="btn btn-secondary btn-sm">View all</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Item</th><th class="text-right">Revenue</th></tr></thead>
+            <tbody id="topItemsTbody">
+              <tr><td colspan="2" class="state-block"><span class="spinner"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px;">
+      <!-- Low stock -->
+      <div class="content-card">
+        <div class="content-card__header">
+          <span class="content-card__title">Low stock</span>
+          <a href="/app/owner/batches.html" class="btn btn-secondary btn-sm">View all</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Item</th><th class="text-right">Stock</th></tr></thead>
+            <tbody id="lowStockTbody">
+              <tr><td colspan="2" class="state-block"><span class="spinner"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pending requests -->
+      <div class="content-card">
+        <div class="content-card__header">
+          <span class="content-card__title">Pending requests</span>
+          <a href="/app/owner/requests.html" class="btn btn-secondary btn-sm">View all</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Customer</th><th>Item</th><th>Qty</th><th></th></tr></thead>
+            <tbody id="requestsTbody">
+              <tr><td colspan="4" class="state-block"><span class="spinner"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, date } from '../js/format.js?v=3';
+  import { lineChart } from '../js/charts.js?v=3';
+  import { confirmDialog, toast, showError } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  async function load() {
+    // 1. Total Bills KPI
+    api.get('/bills/').then(bills => {
+      document.getElementById('kpiTotalBills').textContent = Array.isArray(bills) ? bills.length : '0';
+    }).catch(err => {
+      document.getElementById('kpiTotalBills').textContent = '—';
+    });
+
+    // 2. Low Stock Alerts & KPI
+    const lsTbody = document.getElementById('lowStockTbody');
+    api.get('/owner/insights/low-stock').then(lowStock => {
+      document.getElementById('kpiLowStock').textContent = Array.isArray(lowStock) ? lowStock.length : '0';
+      if (!lowStock || lowStock.length === 0) {
+        lsTbody.innerHTML = `<tr><td colspan="2" class="state-block"><div class="state-block__desc">All stock levels healthy.</div></td></tr>`;
+      } else {
+        lsTbody.innerHTML = lowStock.slice(0, 8).map(i => {
+          const qty = i.Total_Stock ?? i.Live_Stock;
+          let stockHtml = '';
+          if (qty === null || qty === undefined) {
+            stockHtml = '<span class="text-faint">No batches</span>';
+          } else if (Number(qty) === 0) {
+            stockHtml = '<strong class="text-danger">0 units</strong> <span class="badge badge-outofstock" style="font-size:10px; margin-left:4px;">Out of stock</span>';
+          } else {
+            stockHtml = `<span class="text-warning"><strong>${esc(qty)}</strong> units</span>`;
+          }
+          return `
+            <tr>
+              <td>${esc(i.Item_Name)}</td>
+              <td class="text-right">${stockHtml}</td>
+            </tr>`;
+        }).join('');
+      }
+    }).catch(err => {
+      showError(lsTbody, err.message, load, 2);
+    });
+
+    // 3. Top Selling Items
+    const topTbody = document.getElementById('topItemsTbody');
+    api.get('/owner/insights/top-items').then(topItems => {
+      if (!topItems || topItems.length === 0) {
+        topTbody.innerHTML = `<tr><td colspan="2" class="state-block"><div class="state-block__desc">No sales data yet.</div></td></tr>`;
+      } else {
+        topTbody.innerHTML = topItems.slice(0, 5).map(i => `
+          <tr>
+            <td>${esc(i.Item_Name)}</td>
+            <td class="text-right text-success">${inr(i.Revenue || i.Total_Revenue)}</td>
+          </tr>`).join('');
+      }
+    }).catch(err => {
+      showError(topTbody, err.message, load, 2);
+    });
+
+    // 4. Expiring Batches KPI
+    api.get('/owner/insights/expiring-batches').then(expiring => {
+      document.getElementById('kpiExpiring').textContent = Array.isArray(expiring) ? expiring.length : '0';
+    }).catch(err => {
+      document.getElementById('kpiExpiring').textContent = '—';
+    });
+
+    // 5. Pending Stock Requests
+    const reqTbody = document.getElementById('requestsTbody');
+    api.get('/customers/stock-requests?status=Pending').then(pending => {
+      document.getElementById('kpiPending').textContent = Array.isArray(pending) ? pending.length : '0';
+      if (!pending || pending.length === 0) {
+        reqTbody.innerHTML = `<tr><td colspan="4" class="state-block"><div class="state-block__desc">No pending customer requests.</div></td></tr>`;
+      } else {
+        reqTbody.innerHTML = pending.slice(0, 6).map(r => `
+          <tr>
+            <td>${esc(r.Customer_Name)}</td>
+            <td>${esc(r.Item_Name || r.Requested_Item_Name)}</td>
+            <td class="text-right">${esc(r.Quantity_Requested)}</td>
+            <td>
+              <button class="btn btn-secondary btn-sm approve-btn" data-id="${esc(r.Request_ID)}" style="margin-right:4px;">Approve</button>
+              <button class="btn btn-danger btn-sm reject-btn" data-id="${esc(r.Request_ID)}">Reject</button>
+            </td>
+          </tr>`).join('');
+
+        reqTbody.querySelectorAll('.approve-btn').forEach(btn => {
+          btn.addEventListener('click', () => resolveRequest(btn.dataset.id, 'Approved'));
+        });
+        reqTbody.querySelectorAll('.reject-btn').forEach(btn => {
+          btn.addEventListener('click', () => resolveRequest(btn.dataset.id, 'Rejected'));
+        });
+      }
+    }).catch(err => {
+      showError(reqTbody, err.message, load, 4);
+    });
+
+    // 6. Sales Trend Chart
+    const chartWrap = document.getElementById('salesChart');
+    api.get('/owner/insights/sales-by-day').then(salesDay => {
+      if (!salesDay || salesDay.length === 0) {
+        chartWrap.innerHTML = '<div class="state-block"><div class="state-block__desc">No sales history found.</div></div>';
+        return;
+      }
+      const dataPoints = [...salesDay].slice(0, 30).reverse().map(d => ({
+        label: date(d.Sale_Date),
+        value: Number(d.Revenue || 0),
+      }));
+      lineChart(chartWrap, dataPoints, {
+        valuePrefix: '₹', showTable: false, height: 200
+      });
+    }).catch(err => {
+      showError(chartWrap, err.message, load);
+    });
+  }
+
+  async function resolveRequest(id, newStatus) {
+    const ok = await confirmDialog(
+      `${newStatus === 'Approved' ? 'Approve' : 'Reject'} request`,
+      `Are you sure you want to mark this request as ${newStatus}?`,
+      newStatus === 'Approved' ? 'Approve' : 'Reject',
+      newStatus === 'Rejected'
+    );
+    if (!ok) return;
+    try {
+      await api.patch(`/customers/stock-requests/${id}`, {
+        new_status: newStatus,
+        remarks: `${newStatus} by Owner`,
+      });
+      toast(`Request ${newStatus.toLowerCase()}.`, 'success');
+      load();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  document.getElementById('refreshBtn')?.addEventListener('click', load);
+  load();
+</script>
+</body>
+</html>

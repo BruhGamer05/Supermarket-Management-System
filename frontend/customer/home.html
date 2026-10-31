@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home - Customer</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title" id="welcomeTitle">Welcome</div>
+        <div class="page-header__desc">Your loyalty balance and recent activity.</div>
+      </div>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="kpi-card__label">Loyalty points</div>
+        <div class="kpi-card__value" id="kpiPoints"><span class="spinner"></span></div>
+        <div class="kpi-card__sub" id="kpiPointsVal"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__label">Pending requests</div>
+        <div class="kpi-card__value" id="kpiPending"><span class="spinner"></span></div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="content-card__header">
+        <span class="content-card__title">Last 5 bills</span>
+        <a href="/app/customer/bills.html" class="btn btn-secondary btn-sm">View all</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Bill no.</th>
+              <th>Date</th>
+              <th class="text-right">Amount payable</th>
+              <th>Payment</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="billsTbody">
+            <tr><td colspan="5" class="state-block"><span class="spinner"></span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, date, num } from '../js/format.js?v=3';
+
+  if (!requireRole(['Customer'])) throw new Error();
+  renderShell();
+
+  async function load() {
+    try {
+      const [profile, loyalty, bills, requests] = await Promise.all([
+        api.get('/customers/me'),
+        api.get('/customers/me/loyalty'),
+        api.get('/bills/'),
+        api.get('/customers/me/stock-requests'),
+      ]);
+
+      document.getElementById('welcomeTitle').textContent =
+        `Welcome, ${profile.First_Name}!`;
+
+      document.getElementById('kpiPoints').textContent    = num(loyalty.balance);
+      document.getElementById('kpiPointsVal').textContent = `= ${inr(loyalty.balance)} off your next bill`;
+
+      const pending = requests.filter(r => r.Status === 'Pending').length;
+      document.getElementById('kpiPending').textContent = pending;
+
+      const recent = bills.slice(0, 5);
+      const tbody  = document.getElementById('billsTbody');
+      if (recent.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="state-block"><div class="state-block__desc">No bills yet.</div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = recent.map(b => `
+        <tr>
+          <td><strong>#${esc(b.Bill_ID)}</strong></td>
+          <td>${esc(date(b.Date_Time))}</td>
+          <td class="text-right">${inr(b.Amount_Payable)}</td>
+          <td>${esc(b.Payment_Method)}</td>
+          <td><a href="/app/invoice.html?id=${esc(b.Bill_ID)}" class="btn btn-secondary btn-sm" target="_blank">View</a></td>
+        </tr>`).join('');
+    } catch (err) {
+      document.getElementById('kpiPoints').textContent  = '—';
+      document.getElementById('kpiPending').textContent = '—';
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
+

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Items - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Items</div>
+        <div class="page-header__desc">Manage the product catalog.</div>
+      </div>
+      <button class="btn btn-primary" id="addItemBtn">Add item</button>
+    </div>
+
+    <div class="content-card">
+      <div class="table-toolbar">
+        <input type="search" id="searchInput" class="form-control" style="width:240px;" placeholder="Search items...">
+        <select id="categoryFilter" class="form-control" style="width:180px;">
+          <option value="">All categories</option>
+        </select>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+  <!-- Add item modal -->
+  <div id="addOverlay" style="display:none;" class="modal-overlay">
+    <div class="modal">
+      <div class="modal__header">
+        <span class="modal__title">Add item</span>
+        <button class="modal__close" id="addClose">&times;</button>
+      </div>
+      <div class="modal__body">
+        <form id="addItemForm" novalidate>
+          <div class="form-error-banner" id="addError"></div>
+          <div class="form-group">
+            <label class="form-label">Item name <span class="required">*</span></label>
+            <input type="text" id="newItemName" class="form-control" data-validate="required" placeholder="e.g. Basmati Rice">
+            <span class="form-error"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="newItemCat" class="form-control">
+              <option value="">Select category...</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn-secondary" id="addCancel">Cancel</button>
+        <button class="btn btn-primary" id="addConfirm">Add item</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { validateForm, attachValidation, showFormError, clearFormError } from '../js/forms.js?v=3';
+  import { toast, setLoading } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let allItems = [];
+  let categories = [];
+  let tableCtrl;
+  const container = document.getElementById('tableContainer');
+  const addForm   = document.getElementById('addItemForm');
+
+  attachValidation(addForm);
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      [allItems, categories] = await Promise.all([
+        api.get('/items/'),
+        api.get('/items/categories'),
+      ]);
+
+      // Populate category dropdowns
+      const catSel = document.getElementById('categoryFilter');
+      const addCat = document.getElementById('newItemCat');
+      categories.forEach(c => {
+        [catSel, addCat].forEach(sel => {
+          const opt = document.createElement('option');
+          opt.value = c.Category_ID;
+          opt.textContent = c.Category_Name;
+          sel.appendChild(opt);
+        });
+      });
+
+      renderTable(allItems);
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div></div>`;
+    }
+  }
+
+  function renderTable(data) {
+    tableCtrl = buildTable(container, data, [
+      { key: 'Item_ID',       label: 'ID', render: r => esc(r.Item_ID) },
+      { key: 'Item_Name',     label: 'Item name' },
+      { key: 'Category_Name', label: 'Category', render: r => esc(r.Category_Name || '—') },
+      { key: 'Total_Stock',   label: 'Total stock', numeric: true },
+    ], { emptyMsg: 'No items found.' });
+  }
+
+  // Filters
+  function applyFilters() {
+    const term = document.getElementById('searchInput').value.toLowerCase();
+    const cat  = document.getElementById('categoryFilter').value;
+    const filtered = allItems.filter(i =>
+      i.Item_Name.toLowerCase().includes(term) &&
+      (cat === '' || String(i.Category_ID) === cat)
+    );
+    if (tableCtrl) tableCtrl.update(filtered);
+  }
+
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+  document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+
+  // Add item modal
+  function openAddModal() {
+    addForm.reset();
+    clearFormError(addForm);
+    document.getElementById('addOverlay').style.display = 'flex';
+  }
+  function closeAddModal() { document.getElementById('addOverlay').style.display = 'none'; }
+
+  document.getElementById('addItemBtn').addEventListener('click', openAddModal);
+  document.getElementById('addClose').addEventListener('click', closeAddModal);
+  document.getElementById('addCancel').addEventListener('click', closeAddModal);
+
+  document.getElementById('addConfirm').addEventListener('click', async () => {
+    clearFormError(addForm);
+    if (!validateForm(addForm)) return;
+
+    const btn     = document.getElementById('addConfirm');
+    const restore = setLoading(btn, 'Adding...');
+
+    try {
+      await api.post('/items/', {
+        item_name:   document.getElementById('newItemName').value.trim(),
+        category_id: document.getElementById('newItemCat').value || null,
+      });
+      toast('Item added successfully.', 'success');
+      closeAddModal();
+      load();
+    } catch (err) {
+      showFormError(addForm, err.message);
+    } finally {
+      restore();
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
+

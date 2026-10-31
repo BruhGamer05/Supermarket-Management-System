@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Store &amp; system settings</div>
+        <div class="page-header__desc">Shop legal identity, business tax parameters, loyalty programme rules, and inventory threshold settings.</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+      <!-- Store Identity -->
+      <div class="content-card">
+        <div class="content-card__header">
+          <span class="content-card__title">Store identity &amp; invoice header</span>
+        </div>
+        <form id="storeForm">
+          <div class="form-group">
+            <label class="form-label">Trade / enterprise name</label>
+            <input type="text" class="form-control" value="Nanoomal Jagmeshwar Dayal" readonly>
+            <span class="form-help">Printed at the head of every official tax invoice.</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Specialisation</label>
+            <input type="text" class="form-control" value="Kriyana, Dryfruits, Desi Jadi Booti &amp; Tota Rang Gulal" readonly>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Shop address</label>
+            <input type="text" class="form-control" value="Gol Bazar, Muzaffarnagar, Uttar Pradesh - 251001" readonly>
+          </div>
+          <div class="form-group">
+            <label class="form-label">State GSTIN</label>
+            <input type="text" class="form-control font-mono" value="09AABCN1234F1Z8" readonly>
+            <span class="form-help">State code 09 (Uttar Pradesh).</span>
+          </div>
+        </form>
+      </div>
+
+      <!-- Loyalty & Inventory Rules -->
+      <div class="content-card">
+        <div class="content-card__header">
+          <span class="content-card__title">Business parameters &amp; rules</span>
+        </div>
+        <form id="rulesForm">
+          <div class="section-sep" style="margin-top:0;">Loyalty programme rules</div>
+          <div class="form-group">
+            <label class="form-label">Earning rate</label>
+            <input type="text" class="form-control" value="1 point per ₹100 of net amount paid" readonly>
+            <span class="form-help">Credited into Customer.Loyalty_Points upon checkout.</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Redemption value</label>
+            <input type="text" class="form-control" value="1 point = ₹1.00 store discount" readonly>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Maximum bill redemption cap</label>
+            <input type="text" class="form-control" value="50% of gross invoice amount" readonly>
+            <span class="form-help">Enforced automatically inside stored procedure sp_create_bill.</span>
+          </div>
+
+          <div class="section-sep">Inventory parameters</div>
+          <div class="form-group">
+            <label class="form-label">Batch stock allocation algorithm</label>
+            <input type="text" class="form-control" value="FEFO (First Expiring, First Out)" readonly>
+            <span class="form-help">Oldest batch is auto-deducted before newer batches.</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Expiry warning threshold</label>
+            <input type="text" class="form-control" value="30 days" readonly>
+            <span class="form-help">Batches expiring within 30 days are flagged in v_expiring_batches.</span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+</script>
+</body>
+</html>
+

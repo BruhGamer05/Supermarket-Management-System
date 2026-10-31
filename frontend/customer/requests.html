@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Requests - Customer</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Requests</div>
+        <div class="page-header__desc">Ask us to stock an item or restock something you need.</div>
+      </div>
+    </div>
+
+    <div class="content-card" style="max-width:480px;">
+      <div class="content-card__header"><span class="content-card__title">New request</span></div>
+      <form id="requestForm" novalidate>
+        <div class="form-error-banner" id="reqError"></div>
+        <div class="form-group">
+          <label class="form-label">Item name <span class="required">*</span></label>
+          <input type="text" id="reqItemName" class="form-control" data-validate="required"
+                 placeholder="e.g. Organic Honey">
+          <span class="form-error"></span>
+          <span class="form-help">Enter the item name as you know it. We will look it up.</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Quantity wanted <span class="required">*</span></label>
+          <input type="number" id="reqQty" class="form-control" value="1" min="1"
+                 data-validate="required,min:1">
+          <span class="form-error"></span>
+        </div>
+        <button type="submit" class="btn btn-primary" id="reqBtn">Submit request</button>
+      </form>
+    </div>
+
+    <div class="content-card">
+      <div class="content-card__header"><span class="content-card__title">My previous requests</span></div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { date } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { validateForm, attachValidation, showFormError, clearFormError } from '../js/forms.js?v=3';
+  import { toast, setLoading, badge } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Customer'])) throw new Error();
+  renderShell();
+
+  const form      = document.getElementById('requestForm');
+  const container = document.getElementById('tableContainer');
+  let tableCtrl;
+
+  attachValidation(form);
+
+  async function loadRequests() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      const requests = await api.get('/customers/me/stock-requests');
+      tableCtrl = buildTable(container, requests, [
+        { key: 'Request_Date',      label: 'Date', render: r => esc(date(r.Request_Date)) },
+        { key: 'Item_Name',         label: 'Item', render: r => esc(r.Item_Name || r.Requested_Item_Name || '—') },
+        { key: 'Quantity_Requested',label: 'Qty', numeric: true },
+        { key: 'Status',            label: 'Status', render: r => badge(r.Status) },
+        { key: 'Remarks',           label: 'Remarks from store', render: r => esc(r.Remarks || '—') },
+      ], { emptyMsg: 'You have no previous requests.' });
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div></div>`;
+    }
+  }
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    clearFormError(form);
+    if (!validateForm(form)) return;
+
+    const btn     = document.getElementById('reqBtn');
+    const restore = setLoading(btn, 'Submitting...');
+
+    try {
+      await api.post('/customers/me/stock-requests', {
+        requested_item_name: document.getElementById('reqItemName').value.trim(),
+        quantity_requested:  parseInt(document.getElementById('reqQty').value),
+      });
+      toast('Request submitted successfully.', 'success');
+      form.reset();
+      loadRequests();
+    } catch (err) {
+      showFormError(form, err.message);
+    } finally {
+      restore();
+    }
+  });
+
+  loadRequests();
+</script>
+</body>
+</html>
+

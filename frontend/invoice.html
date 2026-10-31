@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tax Invoice - Supermarket Management System</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/print.css">
+  <style>
+    body { background: var(--bg); padding: 24px 0; }
+    .screen-toolbar {
+      max-width: 800px;
+      margin: 0 auto 16px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+    }
+    .invoice-card {
+      max-width: 800px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      box-shadow: var(--shadow-pop);
+    }
+    .invoice-header {
+      text-align: center;
+      border-bottom: 2px solid var(--text);
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+    }
+    .invoice-header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .invoice-header p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: 2px 0;
+    }
+    .invoice-type {
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    .invoice-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .invoice-meta-col p {
+      margin: 3px 0;
+      color: var(--text);
+    }
+    .invoice-meta-col strong {
+      color: var(--text-muted);
+      display: inline-block;
+      width: 100px;
+    }
+    .invoice-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      margin-bottom: 20px;
+    }
+    .invoice-table th, .invoice-table td {
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+    }
+    .invoice-table th {
+      background: var(--surface-alt);
+      font-weight: 600;
+    }
+    .totals-area {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .totals-table {
+      width: 320px;
+      font-size: 13px;
+      border-collapse: collapse;
+    }
+    .totals-table td {
+      padding: 4px 8px;
+    }
+    .totals-table tr.total-payable td {
+      font-weight: 700;
+      font-size: 15px;
+      border-top: 2px solid var(--text);
+      border-bottom: 2px solid var(--text);
+    }
+    .invoice-footer {
+      text-align: center;
+      margin-top: 32px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen Toolbar (hidden during print) -->
+  <div class="screen-toolbar no-print">
+    <button class="btn btn-secondary" onclick="window.close() || history.back()">Back</button>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary" onclick="window.print()">Print invoice</button>
+    </div>
+  </div>
+
+  <div class="invoice-card invoice" id="invoiceArea">
+    <div class="state-block"><span class="spinner"></span></div>
+  </div>
+
+<script type="module">
+  import { api } from './js/api.js?v=3';
+  import { esc } from './js/escape.js?v=3';
+  import { inr, dateTime, percent } from './js/format.js?v=3';
+
+  const params = new URLSearchParams(window.location.search);
+  const billId = params.get('id');
+  const invoiceArea = document.getElementById('invoiceArea');
+
+  if (!billId) {
+    invoiceArea.innerHTML = '<div class="state-block"><div class="state-block__title text-danger">No invoice specified.</div><p>Pass ?id=&lt;bill_id&gt; in the URL.</p></div>';
+  } else {
+    loadInvoice(billId);
+  }
+
+  async function loadInvoice(id) {
+    try {
+      const [billData, allBills] = await Promise.all([
+        api.get(`/bills/${id}`),
+        api.get('/bills/'),
+      ]);
+
+      const header = allBills.find(b => String(b.Bill_ID) === String(id)) || {};
+      const { totals, lines } = billData;
+
+      const cgstTotal = Number(totals.GST_Total) / 2;
+      const sgstTotal = Number(totals.GST_Total) / 2;
+
+      const linesHtml = lines.map((l, i) => {
+        const gstRate = Number(l.GST_Percentage);
+        const halfRate = gstRate / 2;
+        const lineGst = Number(l.Line_GST);
+        const halfGst = lineGst / 2;
+
+        return `
+          <tr>
+            <td class="text-center">${i + 1}</td>
+            <td><strong>${esc(l.Item_Name)}</strong></td>
+            <td><code>${esc(l.HSN_Code)}</code></td>
+            <td class="text-right">${esc(l.Quantity)}</td>
+            <td class="text-right">${inr(l.Wholesale_Price)}</td>
+            <td class="text-right">${inr(l.Line_Subtotal)}</td>
+            <td class="text-right">${percent(halfRate, 1)}<br><span class="text-faint">${inr(halfGst)}</span></td>
+            <td class="text-right">${percent(halfRate, 1)}<br><span class="text-faint">${inr(halfGst)}</span></td>
+            <td class="text-right fw-600">${inr(l.Line_Total)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      invoiceArea.innerHTML = `
+        <div class="invoice-header">
+          <h1>NANOOMAL JAGMESHWAR DAYAL</h1>
+          <p>Kriyana, Dryfruits, Desi Jadi Booti &amp; Tota Rang Gulal</p>
+          <p>Gol Bazar, Muzaffarnagar, Uttar Pradesh - 251001</p>
+          <p><strong>GSTIN:</strong> 09AABCN1234F1Z8 | <strong>State:</strong> 09 (Uttar Pradesh)</p>
+          <div class="invoice-type">Tax Invoice</div>
+        </div>
+
+        <div class="invoice-meta">
+          <div class="invoice-meta-col">
+            <p><strong>Invoice no:</strong> #${esc(id)}</p>
+            <p><strong>Date &amp; time:</strong> ${esc(dateTime(header.Date_Time))}</p>
+            <p><strong>Cashier:</strong> ${esc(header.Cashier || 'Counter staff')}</p>
+          </div>
+          <div class="invoice-meta-col">
+            <p><strong>Customer:</strong> ${esc(header.Customer_Name || 'Walk-in Customer')}</p>
+            <p><strong>Mobile:</strong> ${esc(header.Phone_Number || '—')}</p>
+            <p><strong>Payment:</strong> ${esc(header.Payment_Method || 'Cash')}</p>
+          </div>
+        </div>
+
+        <table class="invoice-table">
+          <thead>
+            <tr>
+              <th style="width:30px;">#</th>
+              <th>Item description</th>
+              <th>HSN</th>
+              <th class="text-right">Qty</th>
+              <th class="text-right">Rate</th>
+              <th class="text-right">Taxable value</th>
+              <th class="text-right">CGST</th>
+              <th class="text-right">SGST</th>
+              <th class="text-right">Line total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linesHtml}
+          </tbody>
+        </table>
+
+        <div class="totals-area">
+          <table class="totals-table">
+            <tr>
+              <td class="text-muted">Total taxable value</td>
+              <td class="text-right">${inr(totals.Subtotal)}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">CGST (Central Tax)</td>
+              <td class="text-right">${inr(cgstTotal)}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">SGST (State Tax)</td>
+              <td class="text-right">${inr(sgstTotal)}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Gross total (inc. GST)</td>
+              <td class="text-right">${inr(totals.Gross_Total)}</td>
+            </tr>
+            ${Number(totals.Points_Discount) > 0 ? `
+              <tr>
+                <td class="text-success">Loyalty points redeemed</td>
+                <td class="text-right text-success">−${inr(totals.Points_Discount)}</td>
+              </tr>
+            ` : ''}
+            <tr class="total-payable">
+              <td>Amount payable</td>
+              <td class="text-right">${inr(totals.Amount_Payable)}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="invoice-footer">
+          <p>Thank you for shopping with Nanoomal Jagmeshwar Dayal!</p>
+          <p style="font-size:11px; margin-top:4px;">Computer generated tax invoice. Goods once sold are non-refundable.</p>
+        </div>
+      `;
+    } catch (err) {
+      invoiceArea.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load invoice</div><p>${esc(err.message)}</p></div>`;
+    }
+  }
+</script>
+</body>
+</html>
+

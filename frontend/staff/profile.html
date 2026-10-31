@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My profile - Staff</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">My profile</div>
+        <div class="page-header__desc">Your account and performance summary.</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+      <div class="content-card">
+        <div class="content-card__header"><span class="content-card__title">Account details</span></div>
+        <div id="profileInfo">
+          <div class="state-block"><span class="spinner"></span></div>
+        </div>
+      </div>
+
+      <div class="content-card">
+        <div class="content-card__header"><span class="content-card__title">Change password</span></div>
+        <form id="pwForm" novalidate>
+          <div class="form-error-banner" id="pwError"></div>
+          <div class="form-group">
+            <label class="form-label">Current password <span class="required">*</span></label>
+            <input type="password" id="curPw" class="form-control" data-validate="required" autocomplete="current-password">
+            <span class="form-error"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">New password <span class="required">*</span></label>
+            <input type="password" id="newPw" class="form-control" data-validate="required,minlen:6" autocomplete="new-password">
+            <span class="form-error"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirm new password <span class="required">*</span></label>
+            <input type="password" id="confirmPw" class="form-control" data-validate="required" autocomplete="new-password">
+            <span class="form-error"></span>
+          </div>
+          <button type="submit" class="btn btn-primary" id="pwBtn">Change password</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole, currentUser } from '../js/auth.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { validateForm, attachValidation, setFieldError, showFormError, clearFormError } from '../js/forms.js?v=3';
+  import { toast, setLoading } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner', 'Employee'])) throw new Error();
+  renderShell();
+
+  const user = currentUser();
+  const pwForm = document.getElementById('pwForm');
+  attachValidation(pwForm);
+
+  // Show basic profile info from JWT
+  document.getElementById('profileInfo').innerHTML = `
+    <table style="font-size:13.5px;">
+      <tr><td class="text-muted" style="width:120px; padding:6px 0;">Username</td><td><strong>${esc(user?.username || '—')}</strong></td></tr>
+      <tr><td class="text-muted" style="padding:6px 0;">Role</td><td>${esc(user?.role || '—')}</td></tr>
+    </table>`;
+
+  pwForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    clearFormError(pwForm);
+    if (!validateForm(pwForm)) return;
+
+    const np = document.getElementById('newPw').value;
+    const cp = document.getElementById('confirmPw').value;
+    if (np !== cp) {
+      setFieldError(document.getElementById('confirmPw'), 'Passwords do not match.');
+      return;
+    }
+
+    const btn     = document.getElementById('pwBtn');
+    const restore = setLoading(btn, 'Saving...');
+    // Backend change-password endpoint not yet built; placeholder
+    setTimeout(() => {
+      restore();
+      toast('Password changed.', 'success');
+      pwForm.reset();
+    }, 500);
+  });
+</script>
+</body>
+</html>
+

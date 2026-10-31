@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batches &amp; stock - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Batches &amp; stock</div>
+        <div class="page-header__desc">Manage batches, receive stock and track expiry.</div>
+      </div>
+      <button class="btn btn-primary" id="receiveBtn">Receive stock</button>
+    </div>
+
+    <div class="content-card">
+      <div class="tabs" id="tabs">
+        <button class="tab is-active" data-tab="all">All batches</button>
+        <button class="tab" data-tab="low">Low stock</button>
+        <button class="tab" data-tab="expiring">Expiring soon</button>
+        <button class="tab" data-tab="expired">Expired</button>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+  <!-- Receive stock modal -->
+  <div id="receiveOverlay" style="display:none;" class="modal-overlay">
+    <div class="modal modal--lg">
+      <div class="modal__header">
+        <span class="modal__title">Receive stock</span>
+        <button class="modal__close" id="receiveClose">&times;</button>
+      </div>
+      <div class="modal__body">
+        <form id="receiveForm" novalidate>
+          <div class="form-error-banner" id="receiveError"></div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Item <span class="required">*</span></label>
+              <select id="recItemId" class="form-control" data-validate="required">
+                <option value="">Select item...</option>
+              </select>
+              <span class="form-error"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Supplier</label>
+              <select id="recSupplierId" class="form-control">
+                <option value="">Select supplier...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">HSN code <span class="required">*</span></label>
+              <input type="text" id="recHsn" class="form-control" data-validate="required,hsn" placeholder="e.g. 10061090" maxlength="8">
+              <span class="form-error"></span>
+              <span class="form-help">4 or 8 digit code. Must already exist in HSN & GST table.</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Quantity <span class="required">*</span></label>
+              <input type="number" id="recQty" class="form-control" data-validate="required,min:1" min="1" placeholder="100">
+              <span class="form-error"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Purchase price (ex-GST) <span class="required">*</span></label>
+              <input type="number" id="recPurchasePrice" class="form-control" data-validate="required,min:0" step="0.01" min="0" placeholder="80.00">
+              <span class="form-error"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Selling price (ex-GST) <span class="required">*</span></label>
+              <input type="number" id="recWholesalePrice" class="form-control" data-validate="required,min:0" step="0.01" min="0" placeholder="100.00">
+              <span class="form-error"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Received date <span class="required">*</span></label>
+              <input type="date" id="recDate" class="form-control" data-validate="required">
+              <span class="form-error"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Expiry date</label>
+              <input type="date" id="recExpiry" class="form-control">
+              <span class="form-help">Leave blank if item has no expiry.</span>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn-secondary" id="receiveCancel">Cancel</button>
+        <button class="btn btn-primary" id="receiveConfirm">Receive stock</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, date } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { validateForm, attachValidation, showFormError, clearFormError } from '../js/forms.js?v=3';
+  import { toast, setLoading, badge } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let allBatches = [];
+  let tableCtrl;
+  const container   = document.getElementById('tableContainer');
+  const receiveForm = document.getElementById('receiveForm');
+
+  attachValidation(receiveForm);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const today30  = new Date(); today30.setDate(today30.getDate() + 30);
+  const t30Str   = today30.toISOString().slice(0, 10);
+
+  function batchStatus(b) {
+    if (!b.Expiry_Date) return Number(b.Live_Stock) === 0 ? 'Empty' : 'OK';
+    if (b.Expiry_Date < todayStr) return 'Expired';
+    if (b.Expiry_Date < t30Str)   return 'Expiring';
+    if (Number(b.Live_Stock) === 0) return 'Empty';
+    return 'OK';
+  }
+
+  const columns = [
+    { key: 'Batch_ID',        label: 'Batch ID' },
+    { key: 'Item_Name',       label: 'Item' },
+    { key: 'Supplier_Name',   label: 'Supplier', render: r => esc(r.Supplier_Name || '—') },
+    { key: 'HSN_Code',        label: 'HSN' },
+    { key: 'GST_Percentage',  label: 'GST %', numeric: true, render: r => r.GST_Percentage + '%' },
+    { key: 'Purchase_Price',  label: 'Purchase price', numeric: true, render: r => inr(r.Purchase_Price) },
+    { key: 'Wholesale_Price', label: 'Sell price', numeric: true, render: r => inr(r.Wholesale_Price) },
+    { key: 'Live_Stock',      label: 'In stock', numeric: true },
+    { key: 'Received_Date',   label: 'Received', render: r => esc(date(r.Received_Date)) },
+    { key: 'Expiry_Date',     label: 'Expiry',   render: r => r.Expiry_Date ? esc(date(r.Expiry_Date)) : '—' },
+    { key: '_status', label: 'Status', sortable: false, render: r => badge(batchStatus(r)) },
+  ];
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      allBatches = await api.get('/items/batches');
+      renderTab('all');
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div></div>`;
+    }
+  }
+
+  function renderTab(tab) {
+    let data = allBatches;
+    if (tab === 'low')     data = allBatches.filter(b => Number(b.Live_Stock) <= 20);
+    if (tab === 'expiring')data = allBatches.filter(b => batchStatus(b) === 'Expiring');
+    if (tab === 'expired') data = allBatches.filter(b => batchStatus(b) === 'Expired');
+
+    if (tableCtrl) tableCtrl.update(data);
+    else tableCtrl = buildTable(container, data, columns, { emptyMsg: 'No batches in this view.' });
+  }
+
+  document.getElementById('tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.tab');
+    if (!btn) return;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    renderTab(btn.dataset.tab);
+  });
+
+  // Receive stock modal
+  async function openReceiveModal() {
+    receiveForm.reset();
+    clearFormError(receiveForm);
+    // Set today's date
+    document.getElementById('recDate').value = todayStr;
+
+    // Populate selects
+    const [items, suppliers] = await Promise.all([
+      api.get('/items/'),
+      api.get('/owner/suppliers'),
+    ]);
+    const itemSel = document.getElementById('recItemId');
+    const suppSel = document.getElementById('recSupplierId');
+    itemSel.innerHTML = '<option value="">Select item...</option>';
+    suppSel.innerHTML = '<option value="">Select supplier...</option>';
+    items.forEach(i => { const o = document.createElement('option'); o.value = i.Item_ID; o.textContent = i.Item_Name; itemSel.appendChild(o); });
+    suppliers.forEach(s => { const o = document.createElement('option'); o.value = s.Supplier_ID; o.textContent = s.Supplier_Name; suppSel.appendChild(o); });
+
+    document.getElementById('receiveOverlay').style.display = 'flex';
+  }
+
+  function closeReceiveModal() { document.getElementById('receiveOverlay').style.display = 'none'; }
+
+  document.getElementById('receiveBtn').addEventListener('click', openReceiveModal);
+  document.getElementById('receiveClose').addEventListener('click', closeReceiveModal);
+  document.getElementById('receiveCancel').addEventListener('click', closeReceiveModal);
+
+  document.getElementById('receiveConfirm').addEventListener('click', async () => {
+    clearFormError(receiveForm);
+    if (!validateForm(receiveForm)) return;
+
+    const btn     = document.getElementById('receiveConfirm');
+    const restore = setLoading(btn, 'Receiving...');
+
+    try {
+      await api.post('/items/receive-stock', {
+        item_id:         parseInt(document.getElementById('recItemId').value),
+        supplier_id:     document.getElementById('recSupplierId').value ? parseInt(document.getElementById('recSupplierId').value) : null,
+        hsn_code:        document.getElementById('recHsn').value.trim(),
+        purchase_price:  parseFloat(document.getElementById('recPurchasePrice').value),
+        wholesale_price: parseFloat(document.getElementById('recWholesalePrice').value),
+        quantity:        parseInt(document.getElementById('recQty').value),
+        received_date:   document.getElementById('recDate').value,
+        expiry_date:     document.getElementById('recExpiry').value || null,
+        check_procures:  false,
+      });
+      toast('Stock received and new batch created.', 'success');
+      closeReceiveModal();
+      load();
+    } catch (err) {
+      showFormError(receiveForm, err.message);
+    } finally {
+      restore();
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
+

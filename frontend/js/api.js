@@ -1,91 +1,72 @@
-// frontend/js/api.js
-// Handles communication with the FastAPI backend.
+// js/api.js — HTTP client that wraps fetch, adds the JWT, and handles 401
 
-const API_BASE_URL = "http://localhost:8000";
+// If running in browser over HTTP/HTTPS, use relative URL (same host/port).
+// Otherwise (e.g. file:// or standalone), fallback to localhost:8000.
+const API_BASE = (typeof window !== 'undefined' && window.location.protocol.startsWith('http'))
+  ? ''
+  : 'http://localhost:8000';
 
-// --- Toast Notifications ---
-function showToast(message, type = 'info') {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        document.body.appendChild(container);
-    }
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = message;
-    container.appendChild(toast);
-
-    setTimeout(() => {
-        toast.style.animation = 'fadeOut 0.3s ease-out forwards';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+export class ApiError extends Error {
+  /**
+   * @param {number} status
+   * @param {string} message
+   */
+  constructor(status, message) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
 }
 
-// --- API Fetch Wrapper ---
-async function apiFetch(endpoint, options = {}) {
-    const token = localStorage.getItem('token');
-    
-    const headers = {
-        'Content-Type': 'application/json',
-        ...options.headers
-    };
+/**
+ * Core fetch wrapper.
+ * @param {'GET'|'POST'|'PUT'|'PATCH'|'DELETE'} method
+ * @param {string} endpoint  e.g. '/items/'
+ * @param {*} [body]         serialised as JSON if provided
+ * @returns {Promise<any>}
+ */
+async function request(method, endpoint, body) {
+  const token = localStorage.getItem('token');
 
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const opts = { method, headers };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, opts);
+  } catch (err) {
+    throw new ApiError(0, 'Cannot reach the server. Check your connection.');
+  }
+
+  let data = null;
+  try { data = await response.json(); } catch (_) { /* non-JSON body */ }
+
+  if (!response.ok) {
+    if (response.status === 401 && !endpoint.includes('/auth/login')) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('role');
+      localStorage.removeItem('user');
+      window.location.href = _resolveRoot('session-expired.html');
     }
+    const msg = data?.detail || `Request failed (${response.status})`;
+    throw new ApiError(response.status, msg);
+  }
 
-    const config = {
-        ...options,
-        headers
-    };
-
-    try {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-        const data = await response.json().catch(() => null);
-
-        if (!response.ok) {
-            const errorMsg = data?.detail || 'An error occurred';
-            // Only redirect to login page if we aren't already there and trying to log in
-            if (response.status === 401 && !endpoint.includes('/auth/login')) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('role');
-                window.location.href = 'index.html';
-            }
-            throw new Error(errorMsg);
-        }
-
-        return data;
-    } catch (error) {
-        showToast(error.message, 'error');
-        throw error;
-    }
+  return data;
 }
 
-// --- Auth Helper ---
-function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    window.location.href = 'index.html';
+function _resolveRoot(path) {
+  const base = window.location.pathname.split('/app/')[0] + '/app/';
+  return base + path;
 }
 
-function checkAuth(allowedRoles = []) {
-    const token = localStorage.getItem('token');
-    const role = localStorage.getItem('role');
-    
-    if (!token) {
-        window.location.href = 'index.html';
-        return false;
-    }
-    
-    if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
-        showToast('Access denied', 'error');
-        setTimeout(() => {
-            if (role === 'Owner') window.location.href = 'owner.html';
-            else if (role === 'Employee') window.location.href = 'cashier.html';
-            else window.location.href = 'index.html';
-        }, 1000);
-        return false;
-    }
-    return true;
-}
+export const api = {
+  get:    (endpoint)        => request('GET',    endpoint),
+  post:   (endpoint, body)  => request('POST',   endpoint, body),
+  put:    (endpoint, body)  => request('PUT',    endpoint, body),
+  patch:  (endpoint, body)  => request('PATCH',  endpoint, body),
+  delete: (endpoint)        => request('DELETE', endpoint),
+};

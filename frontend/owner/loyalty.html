@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loyalty Liability &amp; Holders - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Loyalty programme analytics</div>
+        <div class="page-header__desc">Monitor outstanding store discount liability and top active loyalty point holders.</div>
+      </div>
+    </div>
+
+    <!-- KPI Strip -->
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="kpi-card__label">Total outstanding points</div>
+        <div class="kpi-card__value text-warning" id="kpiTotalPts">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__label">Store discount liability</div>
+        <div class="kpi-card__value" id="kpiLiability">—</div>
+        <div class="kpi-card__sub">1 point = ₹1.00 store discount (max 50% per bill)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__label">Active point holders</div>
+        <div class="kpi-card__value" id="kpiHolders">—</div>
+      </div>
+    </div>
+
+    <!-- Top Holders Table -->
+    <div class="content-card">
+      <div class="content-card__header">
+        <span class="content-card__title">Top loyalty point holders</span>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, num } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  const container = document.getElementById('tableContainer');
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      const customers = await api.get('/customers/');
+
+      const totalPts = customers.reduce((sum, c) => sum + Number(c.Loyalty_Points || 0), 0);
+      const activeHolders = customers.filter(c => Number(c.Loyalty_Points || 0) > 0);
+
+      document.getElementById('kpiTotalPts').textContent = `${num(totalPts)} pts`;
+      document.getElementById('kpiLiability').textContent = inr(totalPts);
+      document.getElementById('kpiHolders').textContent   = `${activeHolders.length} of ${customers.length} customers`;
+
+      const sorted = [...customers].sort((a, b) => Number(b.Loyalty_Points) - Number(a.Loyalty_Points));
+
+      buildTable(container, sorted, [
+        { key: 'Customer_ID',    label: 'ID' },
+        { key: 'First_Name',     label: 'Customer name',
+          render: r => `<strong>${esc(`${r.First_Name} ${r.Last_Name || ''}`.trim())}</strong>` },
+        { key: 'Phone_Number',   label: 'Mobile', render: r => esc(r.Phone_Number || '—') },
+        { key: 'City',           label: 'City', render: r => esc(r.City || '—') },
+        { key: 'Loyalty_Points', label: 'Point balance', numeric: true,
+          render: r => `<strong class="text-warning">${num(r.Loyalty_Points)}</strong>` },
+        { key: '_val',           label: 'Redemption value', numeric: true,
+          render: r => inr(r.Loyalty_Points) },
+      ], { emptyMsg: 'No loyalty point balances.' });
+
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load loyalty data</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
+

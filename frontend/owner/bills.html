@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bills - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Bills</div>
+        <div class="page-header__desc">Master log of all customer transactions, taxes, and payment methods.</div>
+      </div>
+      <button class="btn btn-secondary" id="exportBtn">Export CSV</button>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="kpi-card__label">Total bills</div>
+        <div class="kpi-card__value" id="kpiBillCount">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__label">Total gross turnover</div>
+        <div class="kpi-card__value text-success" id="kpiTurnover">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__label">Loyalty points redeemed</div>
+        <div class="kpi-card__value" id="kpiPointsDisc">—</div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="table-toolbar">
+        <input type="search" id="searchInput" class="form-control" style="width:260px;" placeholder="Search by bill no, customer, cashier...">
+        <select id="paymentFilter" class="form-control" style="width:160px;">
+          <option value="">All payment methods</option>
+          <option value="Cash">Cash</option>
+          <option value="UPI">UPI</option>
+          <option value="Card">Card</option>
+        </select>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, dateTime } from '../js/format.js?v=3';
+  import { buildTable, exportCsv } from '../js/table.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let allBills = [];
+  let tableCtrl;
+  const container = document.getElementById('tableContainer');
+
+  const columns = [
+    { key: 'Bill_ID',        label: 'Bill no.', render: r => `<strong>#${esc(r.Bill_ID)}</strong>` },
+    { key: 'Date_Time',      label: 'Date & time', render: r => esc(dateTime(r.Date_Time)) },
+    { key: 'Customer_Name',  label: 'Customer',
+      render: r => esc(r.Customer_Name || 'Walk-in') + (r.Phone_Number ? `<br><span class="text-faint">${esc(r.Phone_Number)}</span>` : '') },
+    { key: 'Cashier',        label: 'Cashier', render: r => esc(r.Cashier || '—') },
+    { key: 'Gross_Total',    label: 'Gross total', numeric: true, render: r => inr(r.Gross_Total) },
+    { key: 'Points_Discount',label: 'Points discount', numeric: true,
+      render: r => Number(r.Points_Discount) > 0 ? `<span class="text-success">−${inr(r.Points_Discount)}</span>` : '—' },
+    { key: 'Amount_Payable', label: 'Amount payable', numeric: true,
+      render: r => `<strong>${inr(r.Amount_Payable)}</strong>` },
+    { key: 'Payment_Method', label: 'Payment' },
+    { key: '_invoice',       label: '', sortable: false,
+      render: r => `<a href="/app/invoice.html?id=${esc(r.Bill_ID)}" class="btn btn-secondary btn-sm" target="_blank">Invoice</a>` },
+  ];
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      allBills = await api.get('/bills/');
+
+      document.getElementById('kpiBillCount').textContent = allBills.length;
+      const turnover = allBills.reduce((acc, b) => acc + Number(b.Amount_Payable || 0), 0);
+      document.getElementById('kpiTurnover').textContent = inr(turnover);
+      const points = allBills.reduce((acc, b) => acc + Number(b.Points_Discount || 0), 0);
+      document.getElementById('kpiPointsDisc').textContent = inr(points);
+
+      tableCtrl = buildTable(container, allBills, columns, {
+        emptyMsg: 'No bills found.',
+      });
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  function applyFilters() {
+    const term = document.getElementById('searchInput').value.toLowerCase().trim();
+    const method = document.getElementById('paymentFilter').value;
+
+    const filtered = allBills.filter(b => {
+      const matchSearch = String(b.Bill_ID).includes(term) ||
+        (b.Customer_Name || '').toLowerCase().includes(term) ||
+        (b.Phone_Number || '').includes(term) ||
+        (b.Cashier || '').toLowerCase().includes(term);
+      const matchMethod = !method || b.Payment_Method === method;
+      return matchSearch && matchMethod;
+    });
+
+    if (tableCtrl) tableCtrl.update(filtered);
+  }
+
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+  document.getElementById('paymentFilter').addEventListener('change', applyFilters);
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    exportCsv(allBills, [
+      { key: 'Bill_ID',         label: 'Bill No' },
+      { key: 'Date_Time',       label: 'Date Time' },
+      { key: 'Customer_Name',   label: 'Customer' },
+      { key: 'Phone_Number',    label: 'Phone' },
+      { key: 'Cashier',         label: 'Cashier' },
+      { key: 'Gross_Total',     label: 'Gross Total' },
+      { key: 'Points_Discount', label: 'Points Discount' },
+      { key: 'Amount_Payable',  label: 'Amount Payable' },
+      { key: 'Payment_Method',  label: 'Payment Method' },
+    ], 'bills.csv');
+  });
+
+  load();
+</script>
+</body>
+</html>
+

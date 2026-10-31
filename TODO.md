@@ -43,17 +43,18 @@ Mark items [x] when done. Stop at the end of each phase and show the user before
 - [x] Frontend served statically from `/app` via FastAPI mount (`app.mount("/app", StaticFiles(directory="frontend"))`).
 
 ## Phase 4 - Testing and demo readiness
-- [ ] Automated tests for billing math (GST rounding), stock deduction, loyalty, role permissions.
+- [x] Automated tests for billing math (GST rounding), stock deduction, loyalty, role permissions (`scratch/run_exhaustive_tests.py` - 29/29 passed).
 - [x] Demo script (`DEMO.md`) covering full TA walkthrough — role-by-role flow, startup checklist, viva Q&A answers.
 - [x] One-click startup script (`start_demo.bat`): starts MySQL80 service (as Admin), opens browser to frontend + Swagger, opens MySQL live shell in a separate terminal, starts Uvicorn server.
 
-## Phase 5 - Frontend (Vanilla HTML/CSS/JS)
-- [x] Shared design system (`frontend/css/style.css`) — glassmorphism dark theme, CSS variables, toast notifications.
-- [x] Login page (`frontend/index.html`) — role-aware redirect after JWT auth.
-- [x] Owner dashboard (`frontend/owner.html`) — KPI stats, Top Items, Low Stock, Employee Performance, Stock Request management (Approve/Reject).
-- [x] Cashier / Employee POS (`frontend/cashier.html`) — item catalog, cart, phone-based customer lookup, checkout.
-- [x] Customer portal (`frontend/customer.html`) — loyalty points + history, stock request submission + tracking.
-- [x] Shared API helper (`frontend/js/api.js`) — JWT header injection, 401 toast handling, prevents redirect on login page.
+## Phase 5 - Frontend (Enterprise Light Theme per FRONTEND.md)
+- [x] Shared design system (`frontend/css/tokens.css`, `base.css`, `layout.css`, `components.css`, `print.css`) — calm, dense, zero-dependency light theme.
+- [x] Shared JS modules (`frontend/js/`) — `api.js`, `auth.js`, `shell.js`, `ui.js`, `format.js`, `table.js`, `forms.js`, `charts.js`, `escape.js`.
+- [x] Public pages — `index.html` (login), `signup.html` (customer registration), `session-expired.html`, `403.html`, `404.html`.
+- [x] Staff portal (`frontend/staff/`) — `pos.html` (FEFO cart, customer lookup, live preview, stock guard), `home.html`, `bills.html`, `inventory.html`, `customers.html`, `requests.html`, `profile.html`.
+- [x] Customer portal (`frontend/customer/`) — `home.html`, `catalog.html`, `bills.html` (with service rating modal), `loyalty.html`, `requests.html`, `profile.html`.
+- [x] Owner suite (`frontend/owner/`) — `dashboard.html`, `items.html`, `batches.html` (receive stock), `suppliers.html`, `employees.html`, `customers.html`, `bills.html`, `requests.html`, `feedback.html`, `reports.html`, `marketing.html`, `loyalty.html`, `tax.html`, `accounts.html`, `settings.html`.
+- [x] Printable A4 Tax Invoice (`frontend/invoice.html`) — complete CGST/SGST breakdown, batch HSN, totals, loyalty discount.
 
 ## Phase 6 - Submission documents
 - [x] Relational schema regenerated from live DB in MySQL `describe` format → `new_schema.md`.

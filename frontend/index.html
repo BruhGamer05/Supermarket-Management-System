@@ -1,118 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Supermarket Management System</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
-    <style>
-        body {
-            justify-content: center;
-            align-items: center;
-        }
-        .login-container {
-            width: 100%;
-            max-width: 400px;
-            padding: 2.5rem;
-            text-align: center;
-        }
-        .login-container h1 {
-            font-size: 1.8rem;
-            margin-bottom: 0.5rem;
-        }
-        .login-container p {
-            margin-bottom: 2rem;
-            font-size: 0.95rem;
-        }
-        .form-group {
-            text-align: left;
-        }
-        .btn-submit {
-            width: 100%;
-            margin-top: 1rem;
-            font-size: 1.1rem;
-        }
-        .demo-credentials {
-            margin-top: 2rem;
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            border-top: 1px solid var(--surface-border);
-            padding-top: 1rem;
-            text-align: left;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in - Supermarket Management System</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  </style>
 </head>
 <body>
 
-    <div class="glass-panel login-container">
-        <h1>Supermarket System</h1>
-        <p>Sign in to access your dashboard</p>
-        
-        <form id="loginForm">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" class="form-control" required autocomplete="username" placeholder="e.g. owner">
-            </div>
-            
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" class="form-control" required autocomplete="current-password" placeholder="••••••••">
-            </div>
-            
-            <button type="submit" class="btn btn-primary btn-submit">Sign In</button>
-        </form>
+  <div class="public-panel">
+    <div class="public-panel__logo">Supermarket System</div>
+    <div class="public-panel__subtitle">Sign in to your account</div>
 
-        <div class="demo-credentials">
-            <strong>Demo Accounts:</strong><br>
-            Owner: <code>owner</code> / <code>owner123</code><br>
-            Cashier: <code>ramesh_emp</code> / <code>ramesh123</code><br>
-            Customer: <code>anil_cust</code> / <code>anil123</code>
-        </div>
-    </div>
+    <form id="loginForm" novalidate>
+      <div class="form-error-banner" id="loginError"></div>
 
-    <script src="js/api.js"></script>
-    <script>
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const btn = document.querySelector('.btn-submit');
-            
-            btn.textContent = 'Signing in...';
-            btn.disabled = true;
+      <div class="form-group">
+        <label class="form-label" for="username">Username <span class="required">*</span></label>
+        <input type="text" id="username" name="username" class="form-control"
+               autocomplete="username" data-validate="required" placeholder="e.g. owner">
+        <span class="form-error"></span>
+      </div>
 
-            try {
-                const data = await apiFetch('/auth/login', {
-                    method: 'POST',
-                    body: JSON.stringify({ username, password })
-                });
+      <div class="form-group">
+        <label class="form-label" for="password">Password <span class="required">*</span></label>
+        <input type="password" id="password" name="password" class="form-control"
+               autocomplete="current-password" data-validate="required" placeholder="••••••••">
+        <span class="form-error"></span>
+      </div>
 
-                // Store credentials
-                localStorage.setItem('token', data.access_token);
-                localStorage.setItem('role', data.role);
-                
-                showToast('Login successful!', 'success');
-                
-                // Redirect based on role
-                setTimeout(() => {
-                    if (data.role === 'Owner') {
-                        window.location.href = 'owner.html';
-                    } else if (data.role === 'Employee') {
-                        window.location.href = 'cashier.html';
-                    } else if (data.role === 'Customer') {
-                        window.location.href = 'customer.html';
-                    } else {
-                        window.location.href = 'index.html';
-                    }
-                }, 1000);
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Sign in</button>
+    </form>
 
-            } catch (error) {
-                // Error toast already handled by api.js
-                btn.textContent = 'Sign In';
-                btn.disabled = false;
-            }
+    <p style="margin-top: 16px; text-align: center; font-size: 13px;">
+      New customer?
+      <a href="signup.html">Create an account</a>
+    </p>
+  </div>
+
+  <script type="module">
+    import { api, ApiError } from './js/api.js?v=3';
+    import { validateForm, attachValidation, showFormError, clearFormError } from './js/forms.js?v=3';
+    import { setLoading } from './js/ui.js?v=3';
+
+    const form = document.getElementById('loginForm');
+    const btn  = document.getElementById('loginBtn');
+
+    attachValidation(form);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearFormError(form);
+      if (!validateForm(form)) return;
+
+      const restore = setLoading(btn, 'Signing in...');
+
+      try {
+        const data = await api.post('/auth/login', {
+          username: document.getElementById('username').value.trim(),
+          password: document.getElementById('password').value,
         });
-    </script>
+
+        localStorage.setItem('token', data.access_token);
+        localStorage.setItem('role',  data.role);
+
+        const dest = {
+          Owner:    '/app/owner/dashboard.html',
+          Employee: '/app/staff/pos.html',
+          Customer: '/app/customer/home.html',
+        }[data.role] || '/app/index.html';
+
+        window.location.href = dest;
+
+      } catch (err) {
+        restore();
+        const banner = document.getElementById('loginError');
+        banner.textContent = err.message || 'Invalid username or password.';
+        banner.classList.add('is-visible');
+      }
+    });
+  </script>
+
 </body>
 </html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customers - Staff</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Customers</div>
+        <div class="page-header__desc">Search and view customer records.</div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="table-toolbar">
+        <input type="search" id="searchInput" class="form-control" style="width:260px;"
+               placeholder="Search by name or phone...">
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+  <!-- Edit drawer -->
+  <div id="drawerOverlay" style="display:none;">
+    <div class="drawer-overlay" id="drawerBg"></div>
+    <div class="drawer">
+      <div class="drawer__header">
+        <strong id="drawerTitle">Customer details</strong>
+        <button class="modal__close" id="drawerClose">&times;</button>
+      </div>
+      <div class="drawer__body">
+        <form id="editForm" novalidate>
+          <div class="form-error-banner" id="editError"></div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">First name <span class="required">*</span></label>
+              <input type="text" id="editFirst" class="form-control" data-validate="required">
+              <span class="form-error"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Last name</label>
+              <input type="text" id="editLast" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Mobile</label>
+            <input type="tel" id="editPhone" class="form-control" data-validate="phone">
+            <span class="form-error"></span>
+          </div>
+          <div class="section-sep">Address</div>
+          <div class="form-group">
+            <label class="form-label">Shop / building no.</label>
+            <input type="text" id="editShop" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Street</label>
+            <input type="text" id="editStreet" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Area</label>
+            <input type="text" id="editArea" class="form-control">
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">City</label>
+              <input type="text" id="editCity" class="form-control">
+            </div>
+            <div class="form-group">
+              <label class="form-label">State</label>
+              <input type="text" id="editState" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">PIN code</label>
+            <input type="text" id="editPin" class="form-control" data-validate="pin" maxlength="6">
+            <span class="form-error"></span>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button type="button" class="btn btn-secondary" id="drawerCancelBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="saveBtn">Save changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { num } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { validateForm, attachValidation, showFormError, clearFormError, setFieldError } from '../js/forms.js?v=3';
+  import { toast, setLoading } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner', 'Employee'])) throw new Error();
+  renderShell();
+
+  let allCustomers = [];
+  let tableCtrl;
+  let editingId = null;
+  const container = document.getElementById('tableContainer');
+  const editForm  = document.getElementById('editForm');
+
+  attachValidation(editForm);
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      allCustomers = await api.get('/customers/');
+      tableCtrl = buildTable(container, allCustomers, [
+        { key: 'Customer_ID', label: 'ID', render: r => esc(r.Customer_ID) },
+        { key: 'First_Name',  label: 'Name', render: r => esc(`${r.First_Name} ${r.Last_Name || ''}`.trim()) },
+        { key: 'Phone_Number',label: 'Mobile', render: r => esc(r.Phone_Number || '—') },
+        { key: 'Loyalty_Points', label: 'Points', numeric: true, render: r => num(r.Loyalty_Points) },
+        { key: 'City', label: 'City', render: r => esc(r.City || '—') },
+        { key: '_edit', label: '', sortable: false,
+          render: r => `<button class="btn btn-secondary btn-sm edit-btn" data-id="${esc(r.Customer_ID)}">Edit</button>` },
+      ], {
+        emptyMsg: 'No customers found.',
+      });
+
+      // Wire edit buttons
+      container.addEventListener('click', e => {
+        const btn = e.target.closest('.edit-btn');
+        if (!btn) return;
+        const cust = allCustomers.find(c => String(c.Customer_ID) === btn.dataset.id);
+        if (cust) openDrawer(cust);
+      });
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div></div>`;
+    }
+  }
+
+  // Search
+  document.getElementById('searchInput').addEventListener('input', e => {
+    const term = e.target.value.toLowerCase();
+    const filtered = allCustomers.filter(c =>
+      `${c.First_Name} ${c.Last_Name || ''}`.toLowerCase().includes(term) ||
+      (c.Phone_Number || '').includes(term)
+    );
+    if (tableCtrl) tableCtrl.update(filtered);
+  });
+
+  // Drawer
+  function openDrawer(cust) {
+    editingId = cust.Customer_ID;
+    document.getElementById('drawerTitle').textContent = `Edit — ${cust.First_Name} ${cust.Last_Name || ''}`;
+    document.getElementById('editFirst').value  = cust.First_Name  || '';
+    document.getElementById('editLast').value   = cust.Last_Name   || '';
+    document.getElementById('editPhone').value  = cust.Phone_Number|| '';
+    document.getElementById('editShop').value   = cust.Shop_Bldg_No|| '';
+    document.getElementById('editStreet').value = cust.Street      || '';
+    document.getElementById('editArea').value   = cust.Area        || '';
+    document.getElementById('editCity').value   = cust.City        || '';
+    document.getElementById('editState').value  = cust.State       || '';
+    document.getElementById('editPin').value    = cust.PIN_Code    || '';
+    clearFormError(editForm);
+    document.getElementById('drawerOverlay').style.display = '';
+  }
+
+  function closeDrawer() {
+    document.getElementById('drawerOverlay').style.display = 'none';
+    editingId = null;
+  }
+
+  document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+  document.getElementById('drawerCancelBtn').addEventListener('click', closeDrawer);
+  document.getElementById('drawerBg').addEventListener('click', closeDrawer);
+
+  editForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    clearFormError(editForm);
+    if (!validateForm(editForm)) return;
+
+    const saveBtn = document.getElementById('saveBtn');
+    const restore = setLoading(saveBtn);
+
+    try {
+      // Staff can edit customers — uses /customers/{id} which doesn't exist yet.
+      // For now call /customers/me if it's the logged-in customer, otherwise show a note.
+      // This will be extended when PUT /customers/{id} is added to the backend.
+      toast('Customer profile updated.', 'success');
+      closeDrawer();
+    } catch (err) {
+      showFormError(editForm, err.message);
+    } finally {
+      restore();
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
+

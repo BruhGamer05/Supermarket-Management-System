@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Feedback - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <style>
+    .rating-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 12.5px;
+    }
+    .rating-high { background: var(--success-soft); color: var(--success); }
+    .rating-mid  { background: var(--warning-soft); color: var(--warning); }
+    .rating-low  { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger); }
+  </style>
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Customer feedback</div>
+        <div class="page-header__desc">Ratings and comments submitted by customers per billing transaction. Ratings below 3 require attention.</div>
+      </div>
+    </div>
+
+    <!-- Per-Employee summary cards -->
+    <div class="content-card">
+      <div class="content-card__header">
+        <span class="content-card__title">Employee performance averages</span>
+      </div>
+      <div id="empSummaryContainer"></div>
+    </div>
+
+    <!-- Feedbacks Table -->
+    <div class="content-card">
+      <div class="content-card__header">
+        <span class="content-card__title">Individual feedback entries</span>
+      </div>
+      <div class="table-toolbar">
+        <select id="ratingFilter" class="form-control" style="width:180px;">
+          <option value="">All ratings</option>
+          <option value="low">Under 3 stars (critical)</option>
+          <option value="5">5 stars</option>
+          <option value="4">4 stars</option>
+          <option value="3">3 stars</option>
+          <option value="2">2 stars</option>
+          <option value="1">1 star</option>
+        </select>
+        <input type="search" id="searchInput" class="form-control" style="width:240px;" placeholder="Search employee or customer...">
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { date } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let allFeedbacks = [];
+  let tableCtrl;
+  const tableContainer = document.getElementById('tableContainer');
+  const summaryContainer = document.getElementById('empSummaryContainer');
+
+  async function load() {
+    tableContainer.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    summaryContainer.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+
+    try {
+      const [feedbacks, empPerf] = await Promise.all([
+        api.get('/owner/feedback'),
+        api.get('/owner/insights/employee-performance'),
+      ]);
+
+      allFeedbacks = feedbacks;
+
+      // Render employee summary
+      buildTable(summaryContainer, empPerf, [
+        { key: 'Employee_Name',      label: 'Employee' },
+        { key: 'Bills_Handled',      label: 'Bills handled', numeric: true },
+        { key: 'Feedbacks_Received', label: 'Feedbacks logged', numeric: true },
+        { key: 'Avg_Rating',         label: 'Average rating', numeric: true,
+          render: r => {
+            if (r.Avg_Rating == null) return '<span class="text-faint">No ratings</span>';
+            const val = Number(r.Avg_Rating);
+            const cls = val < 3 ? 'text-danger fw-600' : (val >= 4 ? 'text-success fw-600' : '');
+            return `<span class="${cls}">${val.toFixed(1)} / 5</span>`;
+          }
+        },
+      ], { emptyMsg: 'No employee performance data.' });
+
+      // Render feedbacks list
+      tableCtrl = buildTable(tableContainer, allFeedbacks, [
+        { key: 'Feedback_Date', label: 'Date', render: r => esc(date(r.Feedback_Date)) },
+        { key: 'Bill_ID',       label: 'Bill',
+          render: r => `<a href="/app/invoice.html?id=${esc(r.Bill_ID)}" target="_blank">#${esc(r.Bill_ID)}</a>` },
+        { key: 'Employee_Name', label: 'Staff member', render: r => esc(r.Employee_Name) },
+        { key: 'Customer_Name', label: 'Customer', render: r => esc(r.Customer_Name || 'Walk-in') },
+        { key: 'Rating',        label: 'Rating', numeric: true,
+          render: r => {
+            const num = Number(r.Rating);
+            let cls = 'rating-badge rating-mid';
+            if (num < 3) cls = 'rating-badge rating-low';
+            else if (num >= 4) cls = 'rating-badge rating-high';
+            return `<span class="${cls}">${num} / 5</span>`;
+          }
+        },
+        { key: 'Comments',      label: 'Customer comments',
+          render: r => r.Comments ? `<span>${esc(r.Comments)}</span>` : '<span class="text-faint">No comment provided</span>' },
+      ], { emptyMsg: 'No customer feedback received yet.' });
+
+    } catch (err) {
+      tableContainer.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load feedback</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  function applyFilters() {
+    const rFilter = document.getElementById('ratingFilter').value;
+    const term    = document.getElementById('searchInput').value.toLowerCase().trim();
+
+    const filtered = allFeedbacks.filter(f => {
+      let matchRating = true;
+      if (rFilter === 'low') {
+        matchRating = Number(f.Rating) < 3;
+      } else if (rFilter) {
+        matchRating = String(f.Rating) === rFilter;
+      }
+
+      const matchSearch = (f.Employee_Name || '').toLowerCase().includes(term) ||
+        (f.Customer_Name || '').toLowerCase().includes(term) ||
+        (f.Comments || '').toLowerCase().includes(term) ||
+        String(f.Bill_ID).includes(term);
+
+      return matchRating && matchSearch;
+    });
+
+    if (tableCtrl) tableCtrl.update(filtered);
+  }
+
+  document.getElementById('ratingFilter').addEventListener('change', applyFilters);
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+
+  load();
+</script>
+</body>
+</html>
+

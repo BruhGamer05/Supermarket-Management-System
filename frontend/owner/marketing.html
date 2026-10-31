@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marketing &amp; Customer Segments - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Targeted marketing &amp; segments</div>
+        <div class="page-header__desc">Filter customer segments for festival offers (Holi/Gulal, Diwali dry fruits) and export contact lists for WhatsApp &amp; SMS campaigns.</div>
+      </div>
+      <button class="btn btn-primary" id="exportBtn">Export segment CSV</button>
+    </div>
+
+    <!-- Segment selection controls -->
+    <div class="content-card">
+      <div class="table-toolbar">
+        <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <label class="form-label" style="margin-bottom:4px;">Customer segment</label>
+            <select id="segmentSelect" class="form-control" style="width:260px;">
+              <option value="all">All active customers</option>
+              <option value="loyalty">Customers with unspent loyalty points (&gt; 50 pts)</option>
+              <option value="high_spend">High spenders (from top customers)</option>
+              <option value="city">Filter by city</option>
+            </select>
+          </div>
+          <div id="cityFilterWrap" style="display:none;">
+            <label class="form-label" style="margin-bottom:4px;">City</label>
+            <input type="text" id="cityInput" class="form-control" style="width:180px;" placeholder="e.g. Muzaffarnagar">
+          </div>
+          <div style="align-self:flex-end;">
+            <button class="btn btn-secondary" id="applyBtn">Apply segment</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Segment Preview Table -->
+    <div class="content-card">
+      <div class="content-card__header">
+        <span class="content-card__title">Audience preview (<span id="audienceCount">0</span> recipients)</span>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, num } from '../js/format.js?v=3';
+  import { buildTable, exportCsv } from '../js/table.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let allCustomers = [];
+  let topCustomers = [];
+  let currentSegment = [];
+  let tableCtrl;
+  const container = document.getElementById('tableContainer');
+
+  const segSelect = document.getElementById('segmentSelect');
+  const cityWrap  = document.getElementById('cityFilterWrap');
+
+  segSelect.addEventListener('change', () => {
+    cityWrap.style.display = segSelect.value === 'city' ? '' : 'none';
+  });
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      [allCustomers, topCustomers] = await Promise.all([
+        api.get('/customers/'),
+        api.get('/owner/insights/top-customers'),
+      ]);
+      runFilter();
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load customer records</div></div>`;
+    }
+  }
+
+  function runFilter() {
+    const val = segSelect.value;
+    if (val === 'all') {
+      currentSegment = allCustomers.filter(c => c.Phone_Number);
+    } else if (val === 'loyalty') {
+      currentSegment = allCustomers.filter(c => Number(c.Loyalty_Points || 0) >= 50 && c.Phone_Number);
+    } else if (val === 'high_spend') {
+      const topIds = new Set(topCustomers.map(t => t.Customer_ID));
+      currentSegment = allCustomers.filter(c => topIds.has(c.Customer_ID) && c.Phone_Number);
+    } else if (val === 'city') {
+      const targetCity = document.getElementById('cityInput').value.trim().toLowerCase();
+      currentSegment = allCustomers.filter(c =>
+        c.Phone_Number && (!targetCity || (c.City || '').toLowerCase().includes(targetCity))
+      );
+    }
+
+    document.getElementById('audienceCount').textContent = currentSegment.length;
+
+    tableCtrl = buildTable(container, currentSegment, [
+      { key: 'Customer_ID',    label: 'ID' },
+      { key: 'First_Name',     label: 'Name',
+        render: r => `<strong>${esc(`${r.First_Name} ${r.Last_Name || ''}`.trim())}</strong>` },
+      { key: 'Phone_Number',   label: 'Mobile for WhatsApp/SMS', render: r => `<code>${esc(r.Phone_Number)}</code>` },
+      { key: 'City',           label: 'City', render: r => esc(r.City || '—') },
+      { key: 'Loyalty_Points', label: 'Point balance', numeric: true, render: r => num(r.Loyalty_Points) },
+    ], { emptyMsg: 'No customers match this marketing segment.' });
+  }
+
+  document.getElementById('applyBtn').addEventListener('click', runFilter);
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    if (!currentSegment.length) return;
+    exportCsv(currentSegment, [
+      { key: 'First_Name',   label: 'First Name' },
+      { key: 'Last_Name',    label: 'Last Name' },
+      { key: 'Phone_Number', label: 'Mobile' },
+      { key: 'City',         label: 'City' },
+      { key: 'Loyalty_Points', label: 'Points' },
+    ], `marketing_segment_${segSelect.value}.csv`);
+  });
+
+  load();
+</script>
+</body>
+</html>
+

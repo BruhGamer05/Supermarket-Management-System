@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Accounts - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">User accounts &amp; authentication</div>
+        <div class="page-header__desc">Manage system credentials with bcrypt password hashing and role-based permissions (RBAC).</div>
+      </div>
+      <button class="btn btn-primary" id="createUserBtn">Create account</button>
+    </div>
+
+    <!-- Users Table -->
+    <div class="content-card">
+      <div class="content-card__header">
+        <span class="content-card__title">Registered user accounts</span>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+  <!-- Create User Modal -->
+  <div id="createModalOverlay" style="display:none;" class="modal-overlay">
+    <div class="modal">
+      <div class="modal__header">
+        <span class="modal__title">Create login account</span>
+        <button class="modal__close" id="modalClose">&times;</button>
+      </div>
+      <div class="modal__body">
+        <form id="createForm" novalidate>
+          <div class="form-error-banner" id="formError"></div>
+          <div class="form-group">
+            <label class="form-label">Username <span class="required">*</span></label>
+            <input type="text" id="newUsername" class="form-control" data-validate="required,minlen:3" placeholder="e.g. rajesh_cashier">
+            <span class="form-error"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password <span class="required">*</span></label>
+            <input type="password" id="newPassword" class="form-control" data-validate="required,minlen:6" placeholder="Min. 6 characters">
+            <span class="form-error"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Role <span class="required">*</span></label>
+            <select id="newRole" class="form-control">
+              <option value="Employee">Employee</option>
+              <option value="Owner">Owner</option>
+              <option value="Customer">Customer</option>
+            </select>
+          </div>
+          <div class="form-group" id="empLinkGroup">
+            <label class="form-label">Link to Employee record <span class="required">*</span></label>
+            <select id="empLink" class="form-control">
+              <option value="">Select employee...</option>
+            </select>
+            <span class="form-help">Database constraint requires Employee role to link to an employee.</span>
+          </div>
+          <div class="form-group" id="custLinkGroup" style="display:none;">
+            <label class="form-label">Link to Customer record <span class="required">*</span></label>
+            <select id="custLink" class="form-control">
+              <option value="">Select customer...</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn-secondary" id="modalCancel">Cancel</button>
+        <button class="btn btn-primary" id="modalSubmit">Create account</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { validateForm, attachValidation, showFormError, clearFormError } from '../js/forms.js?v=3';
+  import { toast, setLoading } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let allUsers = [];
+  const container = document.getElementById('tableContainer');
+  const createForm = document.getElementById('createForm');
+
+  attachValidation(createForm);
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      allUsers = await api.get('/auth/users');
+      buildTable(container, allUsers, [
+        { key: 'User_ID',  label: 'User ID' },
+        { key: 'Username', label: 'Username', render: r => `<strong>${esc(r.Username)}</strong>` },
+        { key: 'Role',     label: 'Role',
+          render: r => {
+            const badgeCls = r.Role === 'Owner' ? 'badge-approved' : (r.Role === 'Employee' ? 'badge-pending' : 'badge-ok');
+            return `<span class="badge ${badgeCls}">${esc(r.Role)}</span>`;
+          }
+        },
+        { key: '_linked',  label: 'Linked person',
+          render: r => {
+            if (r.Role === 'Owner') return '<span class="text-faint">Master account</span>';
+            if (r.Role === 'Employee') return esc(r.Employee_Name ? `${r.Employee_Name} (ID: ${r.Employee_ID})` : `Employee #${r.Employee_ID}`);
+            if (r.Role === 'Customer') return esc(r.Customer_Name ? `${r.Customer_Name} (ID: ${r.Customer_ID})` : `Customer #${r.Customer_ID}`);
+            return '—';
+          }
+        },
+      ], { emptyMsg: 'No user accounts found.' });
+
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load user accounts</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  // Dynamic dropdowns in modal
+  const roleSelect = document.getElementById('newRole');
+  const empGroup   = document.getElementById('empLinkGroup');
+  const custGroup  = document.getElementById('custLinkGroup');
+
+  roleSelect.addEventListener('change', () => {
+    const val = roleSelect.value;
+    if (val === 'Employee') {
+      empGroup.style.display = '';
+      custGroup.style.display = 'none';
+    } else if (val === 'Customer') {
+      empGroup.style.display = 'none';
+      custGroup.style.display = '';
+    } else {
+      empGroup.style.display = 'none';
+      custGroup.style.display = 'none';
+    }
+  });
+
+  async function openCreateModal() {
+    createForm.reset();
+    clearFormError(createForm);
+    roleSelect.value = 'Employee';
+    empGroup.style.display = '';
+    custGroup.style.display = 'none';
+
+    try {
+      const [employees, customers] = await Promise.all([
+        api.get('/owner/employees'),
+        api.get('/customers/'),
+      ]);
+      const empSel = document.getElementById('empLink');
+      const custSel = document.getElementById('custLink');
+
+      empSel.innerHTML = '<option value="">Select employee...</option>';
+      employees.forEach(e => {
+        const o = document.createElement('option');
+        o.value = e.Employee_ID;
+        o.textContent = `${e.Name} (ID: ${e.Employee_ID})`;
+        empSel.appendChild(o);
+      });
+
+      custSel.innerHTML = '<option value="">Select customer...</option>';
+      customers.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.Customer_ID;
+        o.textContent = `${c.First_Name} ${c.Last_Name || ''} (${c.Phone_Number || 'No phone'})`;
+        custSel.appendChild(o);
+      });
+
+      document.getElementById('createModalOverlay').style.display = 'flex';
+    } catch (err) {
+      toast('Failed to load personnel data.', 'error');
+    }
+  }
+
+  function closeCreateModal() {
+    document.getElementById('createModalOverlay').style.display = 'none';
+  }
+
+  document.getElementById('createUserBtn').addEventListener('click', openCreateModal);
+  document.getElementById('modalClose').addEventListener('click', closeCreateModal);
+  document.getElementById('modalCancel').addEventListener('click', closeCreateModal);
+
+  document.getElementById('modalSubmit').addEventListener('click', async () => {
+    clearFormError(createForm);
+    if (!validateForm(createForm)) return;
+
+    const role = roleSelect.value;
+    const empId = document.getElementById('empLink').value;
+    const custId = document.getElementById('custLink').value;
+
+    if (role === 'Employee' && !empId) {
+      showFormError(createForm, 'Please select an employee to link to this account.');
+      return;
+    }
+    if (role === 'Customer' && !custId) {
+      showFormError(createForm, 'Please select a customer to link to this account.');
+      return;
+    }
+
+    const btn = document.getElementById('modalSubmit');
+    const restore = setLoading(btn, 'Creating...');
+
+    try {
+      await api.post('/auth/register', {
+        username: document.getElementById('newUsername').value.trim(),
+        password: document.getElementById('newPassword').value,
+        role: role,
+        employee_id: role === 'Employee' ? parseInt(empId) : null,
+        customer_id: role === 'Customer' ? parseInt(custId) : null,
+      });
+
+      toast('User account created successfully.', 'success');
+      closeCreateModal();
+      load();
+    } catch (err) {
+      showFormError(createForm, err.message);
+    } finally {
+      restore();
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
+

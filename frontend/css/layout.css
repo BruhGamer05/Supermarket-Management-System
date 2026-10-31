@@ -1,0 +1,270 @@
+/* css/layout.css — shell structure (top bar + sidebar + content) */
+@import "tokens.css";
+
+/* ── Shell wrapper ────────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── Top bar ──────────────────────────────────────────────── */
+.topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 52px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-5);
+  z-index: 200;
+}
+
+.topbar__brand {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.topbar__user {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.topbar__user-name {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.topbar__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  min-width: 160px;
+  z-index: 300;
+  display: none;
+}
+
+.topbar__menu.is-open { display: block; }
+
+.topbar__menu-item {
+  display: block;
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.topbar__menu-item:hover { background: var(--surface-alt); }
+
+.topbar__menu-item--danger { color: var(--danger); }
+
+.topbar__menu-item:first-child { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.topbar__menu-item:last-child  { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+
+/* ── Sidebar ──────────────────────────────────────────────── */
+.sidebar {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  width: 220px;
+  height: calc(100vh - 52px);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  z-index: 100;
+  padding: var(--space-3) 0;
+}
+
+.nav-group {
+  padding: var(--space-3) var(--space-4) var(--space-1);
+}
+
+.nav-group__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.nav-item {
+  display: block;
+  padding: var(--space-2) var(--space-4);
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  margin: 1px 0;
+}
+
+.nav-item:hover {
+  background: var(--surface-alt);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-left-color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Main content ─────────────────────────────────────────── */
+.main-content {
+  margin-left: 220px;
+  margin-top: 52px;
+  padding: var(--space-5);
+  max-width: calc(1280px + 220px);
+  width: 100%;
+}
+
+/* On login/public pages — no shell */
+.page-centered {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+}
+
+/* ── Page header row ──────────────────────────────────────── */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.page-header__left { flex: 1; }
+
+.page-header__title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: var(--space-1);
+}
+
+.page-header__desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── KPI strip ────────────────────────────────────────────── */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.kpi-card__label {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin-bottom: var(--space-2);
+}
+
+.kpi-card__value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+
+.kpi-card__sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+}
+
+/* ── Content card ─────────────────────────────────────────── */
+.content-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.content-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.content-card__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Two-column POS layout ────────────────────────────────── */
+.pos-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: var(--space-4);
+  height: calc(100vh - 52px);
+  padding: var(--space-4);
+  max-width: 100%;
+  margin-top: 52px;
+  align-items: start;
+}
+
+.pos-left, .pos-right {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pos-left {
+  height: calc(100vh - 52px - var(--space-4) * 2);
+}
+
+.pos-right {
+  height: calc(100vh - 52px - var(--space-4) * 2);
+  position: sticky;
+  top: calc(52px + var(--space-4));
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main-content { margin-left: 0; }
+  .pos-layout { grid-template-columns: 1fr; }
+  .kpi-strip { grid-template-columns: 1fr 1fr; }
+}
+

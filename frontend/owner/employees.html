@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Employees - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Employees</div>
+        <div class="page-header__desc">Manage employees and performance.</div>
+      </div>
+      <button class="btn btn-primary" id="addEmpBtn">Add employee</button>
+    </div>
+
+    <div class="content-card">
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+  <!-- Add employee modal -->
+  <div id="addOverlay" style="display:none;" class="modal-overlay">
+    <div class="modal">
+      <div class="modal__header">
+        <span class="modal__title">Add employee</span>
+        <button class="modal__close" id="addClose">&times;</button>
+      </div>
+      <div class="modal__body">
+        <form id="addForm" novalidate>
+          <div class="form-error-banner" id="addError"></div>
+          <div class="form-group">
+            <label class="form-label">Full name <span class="required">*</span></label>
+            <input type="text" id="empName" class="form-control" data-validate="required" placeholder="e.g. Ramesh Kumar">
+            <span class="form-error"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Mobile</label>
+            <input type="tel" id="empPhone" class="form-control" data-validate="phone" maxlength="10">
+            <span class="form-error"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Shift schedule</label>
+            <input type="text" id="empShift" class="form-control" placeholder="e.g. 9AM–6PM, Mon–Sat">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assigned category</label>
+            <select id="empCat" class="form-control">
+              <option value="">None</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn-secondary" id="addCancel">Cancel</button>
+        <button class="btn btn-primary" id="addConfirm">Add employee</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { validateForm, attachValidation, showFormError, clearFormError } from '../js/forms.js?v=3';
+  import { toast, setLoading } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let tableCtrl;
+  const container = document.getElementById('tableContainer');
+  const addForm   = document.getElementById('addForm');
+
+  attachValidation(addForm);
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      const [employees, performance] = await Promise.all([
+        api.get('/owner/employees'),
+        api.get('/owner/insights/employee-performance'),
+      ]);
+
+      // Merge performance data
+      const perfMap = {};
+      performance.forEach(p => { perfMap[p.Employee_Name] = p; });
+
+      const data = employees.map(e => ({
+        ...e,
+        Bills_Handled: perfMap[e.Name]?.Bills_Handled ?? 0,
+        Avg_Rating:    perfMap[e.Name]?.Avg_Rating    ?? null,
+      }));
+
+      tableCtrl = buildTable(container, data, [
+        { key: 'Employee_ID',   label: 'ID' },
+        { key: 'Name',          label: 'Name' },
+        { key: 'Phone_Number',  label: 'Mobile', render: r => esc(r.Phone_Number || '—') },
+        { key: 'Shift_Schedule',label: 'Shift', render: r => esc(r.Shift_Schedule || '—') },
+        { key: 'Category_Name', label: 'Category', render: r => esc(r.Category_Name || '—') },
+        { key: 'Bills_Handled', label: 'Bills handled', numeric: true },
+        { key: 'Avg_Rating',    label: 'Avg rating', numeric: true,
+          render: r => r.Avg_Rating != null ? `${Number(r.Avg_Rating).toFixed(1)} / 5` : '—' },
+      ], { emptyMsg: 'No employees found.' });
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div></div>`;
+    }
+  }
+
+  // Add modal
+  async function openAddModal() {
+    addForm.reset();
+    clearFormError(addForm);
+    const cats = await api.get('/items/categories');
+    const catSel = document.getElementById('empCat');
+    catSel.innerHTML = '<option value="">None</option>';
+    cats.forEach(c => { const o = document.createElement('option'); o.value = c.Category_ID; o.textContent = c.Category_Name; catSel.appendChild(o); });
+    document.getElementById('addOverlay').style.display = 'flex';
+  }
+
+  function closeAddModal() { document.getElementById('addOverlay').style.display = 'none'; }
+
+  document.getElementById('addEmpBtn').addEventListener('click', openAddModal);
+  document.getElementById('addClose').addEventListener('click', closeAddModal);
+  document.getElementById('addCancel').addEventListener('click', closeAddModal);
+
+  document.getElementById('addConfirm').addEventListener('click', async () => {
+    clearFormError(addForm);
+    if (!validateForm(addForm)) return;
+    const btn     = document.getElementById('addConfirm');
+    const restore = setLoading(btn, 'Adding...');
+    try {
+      await api.post('/owner/employees', {
+        name:          document.getElementById('empName').value.trim(),
+        phone_number:  document.getElementById('empPhone').value.trim()  || null,
+        shift_schedule:document.getElementById('empShift').value.trim()  || null,
+        category_id:   document.getElementById('empCat').value           || null,
+      });
+      toast('Employee added.', 'success');
+      closeAddModal();
+      load();
+    } catch (err) {
+      showFormError(addForm, err.message);
+    } finally {
+      restore();
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
+

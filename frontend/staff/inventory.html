@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory - Staff</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Inventory</div>
+        <div class="page-header__desc">Current stock levels and batch expiry information.</div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="tabs" id="tabs">
+        <button class="tab is-active" data-tab="all">All items</button>
+        <button class="tab" data-tab="low">Low stock</button>
+        <button class="tab" data-tab="expiring">Expiring soon</button>
+        <button class="tab" data-tab="expired">Expired</button>
+      </div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, qty, date } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { badge } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner', 'Employee'])) throw new Error();
+  renderShell();
+
+  let allBatches = [];
+  let tableCtrl;
+  const container = document.getElementById('tableContainer');
+
+  const today30 = new Date(); today30.setDate(today30.getDate() + 30);
+  const todayStr = new Date().toISOString().slice(0,10);
+
+  function batchStatus(b) {
+    if (!b.Expiry_Date) return 'OK';
+    if (b.Expiry_Date < todayStr) return 'Expired';
+    if (b.Expiry_Date < today30.toISOString().slice(0,10)) return 'Expiring';
+    if (Number(b.Live_Stock) === 0) return 'Empty';
+    return 'OK';
+  }
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      allBatches = await api.get('/items/batches');
+      renderTab('all');
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  function renderTab(tab) {
+    let data = allBatches;
+    if (tab === 'low')     data = allBatches.filter(b => Number(b.Live_Stock) <= 20);
+    if (tab === 'expiring')data = allBatches.filter(b => batchStatus(b) === 'Expiring');
+    if (tab === 'expired') data = allBatches.filter(b => batchStatus(b) === 'Expired');
+
+    const columns = [
+      { key: 'Item_Name',     label: 'Item' },
+      { key: 'Supplier_Name', label: 'Supplier', render: r => esc(r.Supplier_Name || '—') },
+      { key: 'Live_Stock',    label: 'In stock',  numeric: true, render: r => qty(r.Live_Stock) },
+      { key: 'Wholesale_Price', label: 'Sell price', numeric: true, render: r => inr(r.Wholesale_Price) },
+      { key: 'Expiry_Date',   label: 'Expiry',    render: r => r.Expiry_Date ? date(r.Expiry_Date) : '—' },
+      { key: '_status',       label: 'Status', sortable: false,
+        render: r => badge(batchStatus(r)) },
+    ];
+
+    if (tableCtrl) {
+      tableCtrl.update(data);
+    } else {
+      tableCtrl = buildTable(container, data, columns, { emptyMsg: 'No batches in this view.' });
+    }
+  }
+
+  document.getElementById('tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.tab');
+    if (!btn) return;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    renderTab(btn.dataset.tab);
+  });
+
+  load();
+</script>
+</body>
+</html>
+

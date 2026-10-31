@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Point of sale - Supermarket Management System</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <style>
+    /* POS-specific overrides */
+    body { background: var(--bg); }
+
+    .pos-left-header {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: var(--space-3);
+      flex-shrink: 0;
+    }
+
+    .pos-left-header .form-control { margin: 0; }
+
+    #itemsTableWrap {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    #itemsTableWrap table { font-size: 13px; }
+    #itemsTableWrap td, #itemsTableWrap th { padding: 6px var(--space-3); height: auto; }
+
+    .add-btn {
+      padding: 0 var(--space-3);
+      height: 26px;
+      font-size: 12px;
+    }
+
+    /* Right panel */
+    .pos-right-header {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+
+    #cartTableWrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    #cartTableWrap table { font-size: 13px; }
+    #cartTableWrap td, #cartTableWrap th { padding: 6px var(--space-3); height: auto; }
+
+    .qty-ctrl {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .qty-ctrl input[type="number"] {
+      width: 48px;
+      height: 26px;
+      text-align: center;
+      padding: 0 4px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+
+    .qty-btn {
+      width: 24px; height: 24px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .qty-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+    /* Cart totals block */
+    .cart-totals {
+      padding: var(--space-3) var(--space-4);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .cart-totals-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+    }
+
+    .cart-totals-row.total {
+      font-weight: 600;
+      font-size: 15px;
+      border-top: 1px solid var(--border);
+      padding-top: 6px;
+      margin-top: 4px;
+    }
+
+    /* Checkout form */
+    .checkout-form {
+      padding: var(--space-3) var(--space-4);
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .checkout-form .form-group { margin-bottom: var(--space-3); }
+    .checkout-form .form-label { font-size: 12.5px; margin-bottom: 4px; }
+    .checkout-form .form-control { height: 30px; font-size: 13px; }
+
+    .customer-info {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      padding: 4px 0 0;
+      min-height: 18px;
+    }
+
+    /* Post-checkout confirmation */
+    #checkoutSuccess {
+      display: none;
+      padding: var(--space-5);
+      text-align: center;
+    }
+
+    #checkoutSuccess .bill-no {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--success);
+      margin-bottom: var(--space-2);
+    }
+
+    #checkoutSuccess .bill-amount {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: var(--space-2);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Shell -->
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+
+  <!-- POS layout — overrides main-content margin with its own grid -->
+  <div class="pos-layout">
+
+    <!-- LEFT: Catalog -->
+    <div class="pos-left">
+      <div class="pos-left-header">
+        <input type="search" id="searchInput" class="form-control"
+               placeholder="Search items by name..." style="flex:1;" autocomplete="off">
+        <select id="categoryFilter" class="form-control" style="width:180px;">
+          <option value="">All categories</option>
+        </select>
+      </div>
+      <div id="itemsTableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Category</th>
+              <th class="text-right">Price (ex-GST)</th>
+              <th class="text-right">GST %</th>
+              <th class="text-right">In stock</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="itemsTbody">
+            <tr><td colspan="6" class="state-block"><span class="spinner"></span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RIGHT: Bill -->
+    <div class="pos-right">
+      <div class="pos-right-header">Current bill</div>
+
+      <!-- Cart table -->
+      <div id="cartTableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="text-right">Rate</th>
+              <th class="text-right">GST</th>
+              <th class="text-right">Qty</th>
+              <th class="text-right">Amount</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cartTbody">
+            <tr><td colspan="6" class="state-block" style="padding:24px 0;">
+              <div class="state-block__desc">Cart is empty</div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Totals -->
+      <div class="cart-totals" id="cartTotals" style="display:none;">
+        <div class="cart-totals-row"><span>Subtotal (ex-GST)</span><span id="totSubtotal">—</span></div>
+        <div class="cart-totals-row"><span>GST</span><span id="totGst">—</span></div>
+        <div class="cart-totals-row"><span>Points discount</span><span id="totPoints" class="text-success">—</span></div>
+        <div class="cart-totals-row total"><span>Amount payable</span><span id="totPayable">—</span></div>
+      </div>
+
+      <!-- Checkout form -->
+      <div class="checkout-form" id="checkoutForm">
+        <div class="form-group">
+          <label class="form-label">Customer mobile</label>
+          <div class="input-group">
+            <input type="tel" id="custPhone" class="form-control" placeholder="9820000001 (blank = walk-in)" maxlength="10">
+            <button class="btn btn-secondary" id="lookupBtn" style="height:30px; font-size:12px;">Look up</button>
+          </div>
+          <div class="customer-info" id="custInfo"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Redeem points</label>
+          <input type="number" id="redeemPoints" class="form-control" value="0" min="0" placeholder="0">
+          <span class="form-help" id="redeemHelp"></span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Payment method</label>
+          <select id="paymentMethod" class="form-control">
+            <option value="Cash">Cash</option>
+            <option value="UPI">UPI</option>
+            <option value="Card">Card</option>
+          </select>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" id="clearBtn">Clear</button>
+          <button class="btn btn-primary" id="checkoutBtn" style="flex:1;" disabled>Checkout</button>
+        </div>
+      </div>
+
+      <!-- Post-checkout confirmation -->
+      <div id="checkoutSuccess">
+        <div class="bill-no" id="successBillNo"></div>
+        <div class="bill-amount" id="successAmount"></div>
+        <div class="text-muted" id="successPoints" style="margin-bottom:16px;"></div>
+        <div style="display:flex; gap:8px; justify-content:center;">
+          <a id="printInvoiceBtn" href="#" class="btn btn-secondary" target="_blank">Print invoice</a>
+          <button class="btn btn-primary" id="newBillBtn">New bill</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole, currentUser } from '../js/auth.js?v=3';
+  import { api, ApiError } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, percent } from '../js/format.js?v=3';
+  import { toast } from '../js/ui.js?v=3';
+
+  if (!requireRole(['Owner', 'Employee'])) throw new Error('Access denied');
+  renderShell();
+
+  // ── State ────────────────────────────────────────────────────
+  let allItems    = [];  // { Item_ID, Item_Name, Category_Name, Total_Stock, Wholesale_Price, GST_Percentage }
+  let cart        = {};  // item_id → { name, rate, gst, qty, stock }
+  let customerID  = null;
+  let loyaltyPts  = 0;
+
+  const me = currentUser();
+
+  // ── Load catalog (items + batch prices) ──────────────────────
+  async function loadCatalog() {
+    try {
+      const [items, batches, cats] = await Promise.all([
+        api.get('/items/'),
+        api.get('/items/batches?in_stock_only=false'),
+        api.get('/items/categories'),
+      ]);
+
+      // Map batch data onto items: take the earliest-expiry in-stock batch for price/GST
+      const batchMap = {};
+      batches.forEach(b => {
+        const id = b.Item_ID ?? allItems.find(i => i.Item_Name === b.Item_Name)?.Item_ID;
+        if (!batchMap[b.Item_ID] || b.Live_Stock > 0) {
+          batchMap[b.Item_ID] = b;
+        }
+      });
+
+      // Re-key batches by item name since batches endpoint doesn't return Item_ID directly
+      const batchByItem = {};
+      batches.forEach(b => {
+        const existing = batchByItem[b.Item_Name];
+        if (!existing || (b.Live_Stock > 0 && (existing.Live_Stock === 0 || !existing.Expiry_Date || (b.Expiry_Date && b.Expiry_Date < existing.Expiry_Date)))) {
+          batchByItem[b.Item_Name] = b;
+        }
+      });
+
+      allItems = items.map(item => {
+        const batch = batchByItem[item.Item_Name] || {};
+        return {
+          ...item,
+          Wholesale_Price: batch.Wholesale_Price ?? null,
+          GST_Percentage:  batch.GST_Percentage  ?? null,
+        };
+      });
+
+      // Populate category filter
+      const catSel = document.getElementById('categoryFilter');
+      cats.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.Category_ID;
+        opt.textContent = c.Category_Name;
+        catSel.appendChild(opt);
+      });
+
+      renderItems(allItems);
+    } catch (err) {
+      document.getElementById('itemsTbody').innerHTML =
+        `<tr><td colspan="6" class="state-block"><div class="state-block__title text-danger">Failed to load catalog</div>
+        <div class="state-block__desc">${esc(err.message)}</div></td></tr>`;
+    }
+  }
+
+  function renderItems(items) {
+    const tbody = document.getElementById('itemsTbody');
+    if (items.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="state-block"><div class="state-block__desc">No items match your search.</div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = items.map(item => {
+      const inStock    = Number(item.Total_Stock) > 0;
+      const noPrice    = item.Wholesale_Price == null;
+      const rowClass   = (!inStock || noPrice) ? ' class="row-muted"' : '';
+      const stockLabel = !inStock ? `<span class="badge badge-outofstock">Out of stock</span>` :
+                         item.Total_Stock <= 10 ? `<span class="badge badge-low">${esc(item.Total_Stock)}</span>` :
+                         `<span>${esc(item.Total_Stock)}</span>`;
+      const addBtn = inStock && !noPrice
+        ? `<button class="btn btn-secondary add-btn" data-id="${esc(item.Item_ID)}">Add</button>`
+        : `<span class="text-faint" style="font-size:12px;">${noPrice ? 'No price' : 'Out of stock'}</span>`;
+
+      return `<tr${rowClass}>
+        <td><strong>${esc(item.Item_Name)}</strong></td>
+        <td class="text-muted">${esc(item.Category_Name || '—')}</td>
+        <td class="text-right">${item.Wholesale_Price != null ? inr(item.Wholesale_Price) : '—'}</td>
+        <td class="text-right">${item.GST_Percentage != null ? percent(item.GST_Percentage, 0) : '—'}</td>
+        <td class="text-right">${stockLabel}</td>
+        <td>${addBtn}</td>
+      </tr>`;
+    }).join('');
+
+    // Attach Add button listeners
+    tbody.querySelectorAll('.add-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = allItems.find(i => i.Item_ID == btn.dataset.id);
+        if (item) addToCart(item);
+      });
+    });
+  }
+
+  // ── Cart ─────────────────────────────────────────────────────
+  function addToCart(item) {
+    const id = item.Item_ID;
+    if (cart[id]) {
+      if (cart[id].qty >= Number(item.Total_Stock)) {
+        toast('Cannot add more — not enough stock.', 'warning');
+        return;
+      }
+      cart[id].qty++;
+    } else {
+      cart[id] = {
+        name:  item.Item_Name,
+        rate:  Number(item.Wholesale_Price),
+        gst:   Number(item.GST_Percentage),
+        qty:   1,
+        stock: Number(item.Total_Stock),
+      };
+    }
+    renderCart();
+  }
+
+  function updateCartQty(id, delta) {
+    if (!cart[id]) return;
+    const newQty = cart[id].qty + delta;
+    if (newQty <= 0) {
+      delete cart[id];
+    } else if (newQty > cart[id].stock) {
+      toast('Cannot exceed available stock.', 'warning');
+      return;
+    } else {
+      cart[id].qty = newQty;
+    }
+    renderCart();
+  }
+
+  function setCartQty(id, val) {
+    const n = parseInt(val);
+    if (!cart[id] || isNaN(n)) return;
+    if (n <= 0) { delete cart[id]; }
+    else if (n > cart[id].stock) { toast('Cannot exceed available stock.', 'warning'); }
+    else { cart[id].qty = n; }
+    renderCart();
+  }
+
+  function renderCart() {
+    const tbody     = document.getElementById('cartTbody');
+    const entries   = Object.entries(cart);
+    const hasItems  = entries.length > 0;
+
+    document.getElementById('checkoutBtn').disabled  = !hasItems;
+    document.getElementById('cartTotals').style.display = hasItems ? '' : 'none';
+
+    if (!hasItems) {
+      tbody.innerHTML = `<tr><td colspan="6" class="state-block" style="padding:24px 0;">
+        <div class="state-block__desc">Cart is empty</div></td></tr>`;
+      updateTotals();
+      return;
+    }
+
+    tbody.innerHTML = entries.map(([id, row]) => {
+      const lineTotal = row.rate * row.qty * (1 + row.gst / 100);
+      return `<tr>
+        <td>${esc(row.name)}</td>
+        <td class="text-right">${inr(row.rate)}</td>
+        <td class="text-right">${percent(row.gst, 0)}</td>
+        <td class="text-right">
+          <div class="qty-ctrl">
+            <button class="qty-btn" data-id="${esc(id)}" data-delta="-1">−</button>
+            <input type="number" value="${row.qty}" min="1" max="${row.stock}"
+                   data-id="${esc(id)}" class="cart-qty-input" style="width:44px;">
+            <button class="qty-btn" data-id="${esc(id)}" data-delta="1">+</button>
+          </div>
+        </td>
+        <td class="text-right">${inr(lineTotal)}</td>
+        <td><button class="btn-link text-danger" data-remove="${esc(id)}" style="font-size:18px;">&times;</button></td>
+      </tr>`;
+    }).join('');
+
+    // Wire up qty controls
+    tbody.querySelectorAll('.qty-btn').forEach(btn => {
+      btn.addEventListener('click', () => updateCartQty(btn.dataset.id, parseInt(btn.dataset.delta)));
+    });
+    tbody.querySelectorAll('.cart-qty-input').forEach(inp => {
+      inp.addEventListener('change', () => setCartQty(inp.dataset.id, inp.value));
+    });
+    tbody.querySelectorAll('[data-remove]').forEach(btn => {
+      btn.addEventListener('click', () => { delete cart[btn.dataset.remove]; renderCart(); });
+    });
+
+    updateTotals();
+  }
+
+  function updateTotals() {
+    const redeemPts = parseInt(document.getElementById('redeemPoints').value) || 0;
+    let subtotal = 0, gstTotal = 0;
+
+    Object.values(cart).forEach(row => {
+      subtotal += row.rate * row.qty;
+      gstTotal += row.rate * row.qty * (row.gst / 100);
+    });
+
+    const grossTotal  = subtotal + gstTotal;
+    const pointsDisc  = Math.min(redeemPts, grossTotal * 0.5);
+    const payable     = Math.max(0, grossTotal - pointsDisc);
+
+    document.getElementById('totSubtotal').textContent = inr(subtotal);
+    document.getElementById('totGst').textContent      = inr(gstTotal);
+    document.getElementById('totPoints').textContent   = pointsDisc > 0 ? `−${inr(pointsDisc)}` : '—';
+    document.getElementById('totPayable').textContent  = inr(payable);
+  }
+
+  // ── Customer lookup ───────────────────────────────────────────
+  document.getElementById('lookupBtn').addEventListener('click', async () => {
+    const phone = document.getElementById('custPhone').value.trim();
+    if (!phone) { customerID = null; loyaltyPts = 0; updateCustomerInfo(null); return; }
+
+    try {
+      const customers = await api.get('/customers/');
+      const found = customers.find(c => c.Phone_Number === phone);
+      if (found) {
+        customerID = found.Customer_ID;
+        loyaltyPts = Number(found.Loyalty_Points) || 0;
+        updateCustomerInfo(found);
+      } else {
+        customerID = null; loyaltyPts = 0;
+        updateCustomerInfo(null, `No customer found for ${phone}. A new record will be created on checkout.`);
+      }
+    } catch (err) {
+      updateCustomerInfo(null, 'Lookup failed.');
+    }
+  });
+
+  function updateCustomerInfo(cust, msg) {
+    const el = document.getElementById('custInfo');
+    const helpEl = document.getElementById('redeemHelp');
+
+    if (cust) {
+      el.innerHTML = `<span class="text-success">${esc(cust.First_Name)} ${esc(cust.Last_Name || '')} — ${cust.Loyalty_Points} points available</span>`;
+      const maxRedeemable = Math.floor(loyaltyPts);
+      helpEl.textContent = `Available ${loyaltyPts} pts, up to ${maxRedeemable} usable (= ${inr(maxRedeemable)} off)`;
+    } else {
+      el.innerHTML = msg ? `<span class="text-muted">${esc(msg)}</span>` : '';
+      helpEl.textContent = '';
+    }
+    updateTotals();
+  }
+
+  document.getElementById('redeemPoints').addEventListener('input', updateTotals);
+
+  // ── Search + filter ───────────────────────────────────────────
+  function applyFilters() {
+    const term = document.getElementById('searchInput').value.toLowerCase();
+    const cat  = document.getElementById('categoryFilter').value;
+    const filtered = allItems.filter(i =>
+      i.Item_Name.toLowerCase().includes(term) &&
+      (cat === '' || String(i.Category_ID) === cat)
+    );
+    renderItems(filtered);
+  }
+
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+  document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+
+  // ── Clear cart ────────────────────────────────────────────────
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    cart = {}; customerID = null; loyaltyPts = 0;
+    document.getElementById('custPhone').value    = '';
+    document.getElementById('redeemPoints').value = '0';
+    document.getElementById('custInfo').innerHTML = '';
+    document.getElementById('redeemHelp').textContent = '';
+    renderCart();
+  });
+
+  // ── Checkout ──────────────────────────────────────────────────
+  document.getElementById('checkoutBtn').addEventListener('click', async () => {
+    const entries = Object.entries(cart);
+    if (entries.length === 0) return;
+
+    const btn     = document.getElementById('checkoutBtn');
+    const origTxt = btn.textContent;
+    btn.disabled  = true;
+    btn.textContent = 'Processing...';
+
+    try {
+      const phone  = document.getElementById('custPhone').value.trim() || null;
+      const redeem = parseInt(document.getElementById('redeemPoints').value) || 0;
+      const method = document.getElementById('paymentMethod').value;
+
+      const payload = {
+        phone,
+        employee_id:    me ? parseInt(me.sub) : 1,
+        payment_method: method,
+        items:          entries.map(([id, row]) => ({ item_id: parseInt(id), qty: row.qty })),
+        redeem_points:  redeem,
+      };
+
+      const res = await api.post('/bills/', payload);
+
+      // Show success panel
+      document.getElementById('checkoutForm').style.display     = 'none';
+      document.getElementById('cartTotals').style.display       = 'none';
+      document.getElementById('cartTableWrap').style.display    = 'none';
+      document.getElementById('checkoutSuccess').style.display  = '';
+
+      document.getElementById('successBillNo').textContent  = `Bill #${res.Bill_ID} created`;
+      document.getElementById('successAmount').textContent  = `Amount payable: ${inr(res.Amount_Payable)}`;
+      document.getElementById('successPoints').textContent  = res.Points_Earned
+        ? `${res.Points_Earned} points earned. New balance shown at next lookup.`
+        : '';
+
+      document.getElementById('printInvoiceBtn').href = `/app/invoice.html?id=${res.Bill_ID}`;
+
+      // Refresh catalog stock counts
+      loadCatalog();
+
+    } catch (err) {
+      toast(err.message, 'error');
+      btn.disabled   = false;
+      btn.textContent = origTxt;
+    }
+  });
+
+  document.getElementById('newBillBtn').addEventListener('click', () => {
+    cart = {}; customerID = null; loyaltyPts = 0;
+    document.getElementById('custPhone').value    = '';
+    document.getElementById('redeemPoints').value = '0';
+    document.getElementById('custInfo').innerHTML  = '';
+    document.getElementById('redeemHelp').textContent = '';
+    document.getElementById('checkoutForm').style.display    = '';
+    document.getElementById('cartTableWrap').style.display   = '';
+    document.getElementById('checkoutSuccess').style.display = 'none';
+    renderCart();
+  });
+
+  // Focus search on load
+  document.getElementById('searchInput').focus();
+  loadCatalog();
+</script>
+
+</body>
+</html>
+

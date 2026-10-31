@@ -151,6 +151,24 @@ def employee_performance(db: MySQLConnection = Depends(get_db), _=OWNER_ONLY):
     return _fetch_view("v_employee_performance", db)
 
 
+@router.get("/feedback")
+def list_feedback(db: MySQLConnection = Depends(get_db), _=OWNER_ONLY):
+    cur = db.cursor(dictionary=True)
+    cur.execute("""
+        SELECT ef.Feedback_ID, ef.Bill_ID, ef.Rating, ef.Comments, ef.Feedback_Date,
+               e.Name AS Employee_Name,
+               CONCAT(c.First_Name, ' ', COALESCE(c.Last_Name, '')) AS Customer_Name
+        FROM Employee_Feedback ef
+        JOIN Bill b ON b.Bill_ID = ef.Bill_ID
+        JOIN Employee e ON e.Employee_ID = b.Employee_ID
+        LEFT JOIN Customer c ON c.Customer_ID = b.Customer_ID
+        ORDER BY ef.Feedback_Date DESC
+    """)
+    result = cur.fetchall()
+    cur.close()
+    return result
+
+
 @router.get("/insights/product-demand")
 def product_demand(db: MySQLConnection = Depends(get_db), _=OWNER_ONLY):
     return _fetch_view("v_product_demand", db)

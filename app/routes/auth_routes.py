@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from mysql.connector import MySQLConnection
 from app.database import get_db
-from app.auth import hash_password, verify_password, create_token
+from app.auth import hash_password, verify_password, create_token, require_role
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -74,3 +74,21 @@ def register_user(body: CreateUserRequest, db: MySQLConnection = Depends(get_db)
         cur.close()
 
     return {"user_id": user_id, "username": body.username, "role": body.role}
+
+
+@router.get("/users")
+def list_users(db: MySQLConnection = Depends(get_db), _user=Depends(require_role("Owner"))):
+    """Owner only: list registered user accounts."""
+    cur = db.cursor(dictionary=True)
+    cur.execute("""
+        SELECT u.User_ID, u.Username, u.Role, u.Employee_ID, u.Customer_ID,
+               e.Name AS Employee_Name,
+               CONCAT(c.First_Name, ' ', COALESCE(c.Last_Name, '')) AS Customer_Name
+        FROM Users u
+        LEFT JOIN Employee e ON e.Employee_ID = u.Employee_ID
+        LEFT JOIN Customer c ON c.Customer_ID = u.Customer_ID
+        ORDER BY u.User_ID ASC
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    return rows

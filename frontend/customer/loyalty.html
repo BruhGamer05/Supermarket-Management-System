@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loyalty - Customer</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Loyalty</div>
+        <div class="page-header__desc">Your points balance and transaction history.</div>
+      </div>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="kpi-card__label">Current balance</div>
+        <div class="kpi-card__value" id="kpiBalance"><span class="spinner"></span></div>
+        <div class="kpi-card__sub" id="kpiBalanceVal"></div>
+      </div>
+    </div>
+
+    <div class="content-card" style="max-width:560px; margin-bottom:16px;">
+      <div class="content-card__header"><span class="content-card__title">How it works</span></div>
+      <ul style="font-size:13.5px; line-height:2; list-style:disc; padding-left:20px; color:var(--text-muted);">
+        <li>Earn <strong>1 point</strong> for every <strong>Rs 100</strong> paid (after GST and any discount).</li>
+        <li>Redeem <strong>1 point = Rs 1</strong> off your next bill.</li>
+        <li>Maximum redemption: <strong>50% of the bill total</strong>.</li>
+        <li>Points are credited only on bills linked to your phone number.</li>
+      </ul>
+    </div>
+
+    <div class="content-card">
+      <div class="content-card__header"><span class="content-card__title">Transaction history</span></div>
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, date, num } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+
+  if (!requireRole(['Customer'])) throw new Error();
+  renderShell();
+
+  async function load() {
+    try {
+      const loyalty = await api.get('/customers/me/loyalty');
+      document.getElementById('kpiBalance').textContent    = num(loyalty.balance);
+      document.getElementById('kpiBalanceVal').textContent = `= ${inr(loyalty.balance)} off your next bill`;
+
+      const container = document.getElementById('tableContainer');
+      buildTable(container, loyalty.history, [
+        { key: 'Txn_Date',     label: 'Date', render: r => esc(date(r.Txn_Date)) },
+        { key: 'Bill_ID',      label: 'Bill', render: r => r.Bill_ID
+            ? `<a href="/app/invoice.html?id=${esc(r.Bill_ID)}" target="_blank">#${esc(r.Bill_ID)}</a>`
+            : '—' },
+        { key: 'Txn_Type',    label: 'Type' },
+        { key: 'Points_Change',label: 'Points', numeric: true,
+          render: r => {
+            const v = Number(r.Points_Change);
+            const cls = v > 0 ? 'text-success' : 'text-danger';
+            return `<span class="${cls}">${v > 0 ? '+' : ''}${esc(v)}</span>`;
+          }
+        },
+      ], { emptyMsg: 'No transactions yet.' });
+    } catch (err) {
+      document.getElementById('kpiBalance').textContent = '—';
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
+

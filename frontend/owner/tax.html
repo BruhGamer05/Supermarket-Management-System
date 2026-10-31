@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HSN &amp; GST Rates - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">HSN &amp; GST rates</div>
+        <div class="page-header__desc">Tax schedule and Harmonized System of Nomenclature (HSN) rates. Rates are insert-only to protect historical audit integrity.</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 340px; gap:24px; align-items:start;">
+      <!-- Table -->
+      <div class="content-card">
+        <div class="content-card__header">
+          <span class="content-card__title">Configured tax rates</span>
+        </div>
+        <div id="tableContainer"></div>
+      </div>
+
+      <!-- Informational / Rule box -->
+      <div class="content-card">
+        <div class="content-card__header">
+          <span class="content-card__title">Tax policy notice</span>
+        </div>
+        <p style="font-size:13px; line-height:1.6; color:var(--text-muted); margin-bottom:12px;">
+          <strong>Insert-only policy:</strong> Under GST compliance, tax rates tied to existing batches and past invoices cannot be altered or deleted.
+        </p>
+        <p style="font-size:13px; line-height:1.6; color:var(--text-muted); margin-bottom:12px;">
+          When a government GST council updates the slab rate for a commodity, a new HSN entry is registered in the database. New stock deliveries are recorded under the new rate, while historical invoices preserve the original rate at the time of transaction.
+        </p>
+        <div style="padding:12px; background:var(--surface-alt); border:1px solid var(--border); border-radius:var(--radius); font-size:12.5px;">
+          <strong>Intra-state breakdown:</strong><br>
+          For Uttar Pradesh domestic transactions, GST is evenly partitioned:
+          <ul style="padding-left:16px; margin-top:4px;">
+            <li>CGST = 50% of GST rate</li>
+            <li>SGST = 50% of GST rate</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { percent } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  const container = document.getElementById('tableContainer');
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      const batches = await api.get('/items/batches');
+
+      // Aggregate distinct HSN rates and their usage counts
+      const hsnMap = {};
+      batches.forEach(b => {
+        const code = b.HSN_Code;
+        if (!hsnMap[code]) {
+          hsnMap[code] = {
+            hsn: code,
+            gst: b.GST_Percentage,
+            batchCount: 0,
+            activeUnits: 0,
+          };
+        }
+        hsnMap[code].batchCount += 1;
+        hsnMap[code].activeUnits += Number(b.Live_Stock || 0);
+      });
+
+      const list = Object.values(hsnMap).sort((a, b) => a.hsn.localeCompare(b.hsn));
+
+      buildTable(container, list, [
+        { key: 'hsn',         label: 'HSN code', render: r => `<code>${esc(r.hsn)}</code>` },
+        { key: 'gst',         label: 'GST rate', numeric: true, render: r => `<strong>${percent(r.gst, 0)}</strong>` },
+        { key: '_cgst',       label: 'CGST', numeric: true, render: r => percent(r.gst / 2, 1) },
+        { key: '_sgst',       label: 'SGST', numeric: true, render: r => percent(r.gst / 2, 1) },
+        { key: 'batchCount',  label: 'Batches using', numeric: true },
+        { key: 'activeUnits', label: 'Units in stock', numeric: true },
+      ], { emptyMsg: 'No HSN records found.' });
+
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load tax schedule</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
+

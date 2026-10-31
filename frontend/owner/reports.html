@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports - Owner</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">Reports &amp; insights</div>
+        <div class="page-header__desc">Financial, sales, product profitability, and employee analytics from database views.</div>
+      </div>
+      <button class="btn btn-secondary" id="exportBtn">Export CSV</button>
+    </div>
+
+    <div class="content-card">
+      <div class="tabs" id="tabs">
+        <button class="tab is-active" data-tab="sales">Sales trends</button>
+        <button class="tab" data-tab="products">Top products &amp; categories</button>
+        <button class="tab" data-tab="profit">Profit per item</button>
+        <button class="tab" data-tab="employees">Employee performance</button>
+        <button class="tab" data-tab="restock">Restock &amp; demand</button>
+      </div>
+
+      <div id="tabContent">
+        <!-- Dynamic tab view -->
+      </div>
+    </div>
+  </main>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, num, date } from '../js/format.js?v=3';
+  import { buildTable, exportCsv } from '../js/table.js?v=3';
+  import { barChart, lineChart } from '../js/charts.js?v=3';
+
+  if (!requireRole(['Owner'])) throw new Error();
+  renderShell();
+
+  let currentTab = 'sales';
+  let currentData = [];
+  let currentColumns = [];
+
+  const tabContainer = document.getElementById('tabContent');
+
+  async function loadTab(tab) {
+    currentTab = tab;
+    tabContainer.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+
+    try {
+      if (tab === 'sales') {
+        const [daily, monthly] = await Promise.all([
+          api.get('/owner/insights/sales-by-day'),
+          api.get('/owner/insights/sales-by-month'),
+        ]);
+
+        tabContainer.innerHTML = `
+          <div style="margin-bottom:24px;">
+            <h3 style="font-size:14px; margin-bottom:12px; color:var(--text-muted);">Daily revenue trend</h3>
+            <div id="chartWrap" style="margin-bottom:24px;"></div>
+          </div>
+          <div class="section-sep">Daily summary</div>
+          <div id="dailyTable"></div>
+          <div class="section-sep" style="margin-top:24px;">Monthly summary</div>
+          <div id="monthlyTable"></div>
+        `;
+
+        const chartData = daily.slice(-14).reverse().map(d => ({
+          label: date(d.Sale_Date),
+          value: Number(d.Revenue || 0),
+        }));
+        lineChart(document.getElementById('chartWrap'), chartData, { valuePrefix: '₹', height: 200, showTable: false });
+
+        currentData = daily;
+        currentColumns = [
+          { key: 'Sale_Date',   label: 'Date', render: r => esc(date(r.Sale_Date)) },
+          { key: 'Bills_Count', label: 'Bills handled', numeric: true },
+          { key: 'Gross_Total', label: 'Gross total', numeric: true, render: r => inr(r.Gross_Total) },
+          { key: 'Revenue',     label: 'Net revenue', numeric: true, render: r => `<strong>${inr(r.Revenue)}</strong>` },
+        ];
+        buildTable(document.getElementById('dailyTable'), daily, currentColumns);
+
+        buildTable(document.getElementById('monthlyTable'), monthly, [
+          { key: 'Month',       label: 'Month' },
+          { key: 'Bills_Count', label: 'Bills count', numeric: true },
+          { key: 'Gross_Total', label: 'Gross total', numeric: true, render: r => inr(r.Gross_Total) },
+          { key: 'Revenue',     label: 'Revenue', numeric: true, render: r => inr(r.Revenue) },
+        ]);
+
+      } else if (tab === 'products') {
+        const [topItems, catSales] = await Promise.all([
+          api.get('/owner/insights/top-items'),
+          api.get('/owner/insights/sales-by-category'),
+        ]);
+
+        tabContainer.innerHTML = `
+          <div style="margin-bottom:24px;">
+            <h3 style="font-size:14px; margin-bottom:12px; color:var(--text-muted);">Category revenue</h3>
+            <div id="chartWrap" style="margin-bottom:24px;"></div>
+          </div>
+          <div class="section-sep">Top selling items</div>
+          <div id="topItemsTable"></div>
+          <div class="section-sep" style="margin-top:24px;">Revenue by category</div>
+          <div id="catTable"></div>
+        `;
+
+        const chartData = catSales.map(c => ({
+          label: c.Category_Name,
+          value: Number(c.Revenue || 0),
+        }));
+        barChart(document.getElementById('chartWrap'), chartData, { valuePrefix: '₹', height: 220, showTable: false });
+
+        currentData = topItems;
+        currentColumns = [
+          { key: 'Item_Name',     label: 'Item' },
+          { key: 'Category_Name', label: 'Category' },
+          { key: 'Units_Sold',    label: 'Units sold', numeric: true },
+          { key: 'Revenue',       label: 'Revenue', numeric: true, render: r => `<strong>${inr(r.Revenue)}</strong>` },
+        ];
+        buildTable(document.getElementById('topItemsTable'), topItems, currentColumns);
+
+        buildTable(document.getElementById('catTable'), catSales, [
+          { key: 'Category_Name', label: 'Category' },
+          { key: 'Units_Sold',    label: 'Units sold', numeric: true },
+          { key: 'Revenue',       label: 'Revenue', numeric: true, render: r => inr(r.Revenue) },
+        ]);
+
+      } else if (tab === 'profit') {
+        const profit = await api.get('/owner/insights/profit');
+
+        tabContainer.innerHTML = `
+          <p class="text-faint" style="margin-bottom:12px;">Gross profit per item is calculated as: <code>(Wholesale_Price - Purchase_Price) &times; Quantity sold</code></p>
+          <div id="profitTable"></div>
+        `;
+
+        currentData = profit;
+        currentColumns = [
+          { key: 'Item_Name',     label: 'Item' },
+          { key: 'Category_Name', label: 'Category' },
+          { key: 'Units_Sold',    label: 'Units sold', numeric: true },
+          { key: 'Gross_Profit',  label: 'Gross profit', numeric: true,
+            render: r => `<strong class="text-success">${inr(r.Gross_Profit)}</strong>` },
+        ];
+        buildTable(document.getElementById('profitTable'), profit, currentColumns);
+
+      } else if (tab === 'employees') {
+        const emp = await api.get('/owner/insights/employee-performance');
+
+        tabContainer.innerHTML = `
+          <div id="empTable"></div>
+        `;
+
+        currentData = emp;
+        currentColumns = [
+          { key: 'Employee_ID',         label: 'ID' },
+          { key: 'Employee_Name',       label: 'Employee' },
+          { key: 'Bills_Handled',       label: 'Bills handled', numeric: true },
+          { key: 'Avg_Rating',          label: 'Average rating', numeric: true,
+            render: r => r.Avg_Rating != null ? `${Number(r.Avg_Rating).toFixed(1)} / 5` : 'No reviews' },
+          { key: 'Feedbacks_Received',  label: 'Reviews count', numeric: true },
+        ];
+        buildTable(document.getElementById('empTable'), emp, currentColumns);
+
+      } else if (tab === 'restock') {
+        const [restock, demand] = await Promise.all([
+          api.get('/owner/insights/restock-list'),
+          api.get('/owner/insights/product-demand'),
+        ]);
+
+        tabContainer.innerHTML = `
+          <div class="section-sep">Low stock restock list (with suppliers)</div>
+          <div id="restockTable"></div>
+          <div class="section-sep" style="margin-top:24px;">Customer product demand from stock requests</div>
+          <div id="demandTable"></div>
+        `;
+
+        currentData = restock;
+        currentColumns = [
+          { key: 'Item_Name',      label: 'Item' },
+          { key: 'Category_Name',  label: 'Category' },
+          { key: 'Current_Stock',  label: 'Current stock', numeric: true,
+            render: r => `<span class="badge badge-low">${esc(r.Current_Stock ?? 0)} units</span>` },
+          { key: 'Supplier_Name',  label: 'Supplier' },
+          { key: 'Supplier_Phone', label: 'Supplier mobile', render: r => esc(r.Supplier_Phone || '—') },
+        ];
+        buildTable(document.getElementById('restockTable'), restock, currentColumns);
+
+        buildTable(document.getElementById('demandTable'), demand, [
+          { key: 'Product',             label: 'Product' },
+          { key: 'Product_Type',        label: 'Type',
+            render: r => `<span class="badge ${r.Product_Type === 'New Product' ? 'badge-pending' : 'badge-ok'}">${esc(r.Product_Type)}</span>` },
+          { key: 'Request_Count',       label: 'Requests', numeric: true },
+          { key: 'Total_Qty_Requested', label: 'Total units requested', numeric: true },
+        ]);
+      }
+
+    } catch (err) {
+      tabContainer.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load report</div>
+        <div class="state-block__desc">${esc(err.message)}</div></div>`;
+    }
+  }
+
+  // Tabs listener
+  document.getElementById('tabs').addEventListener('click', e => {
+    const tabBtn = e.target.closest('.tab');
+    if (!tabBtn) return;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('is-active'));
+    tabBtn.classList.add('is-active');
+    loadTab(tabBtn.dataset.tab);
+  });
+
+  // Export CSV
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    if (!currentData.length) return;
+    exportCsv(currentData, currentColumns, `report_${currentTab}.csv`);
+  });
+
+  loadTab('sales');
+</script>
+</body>
+</html>
+

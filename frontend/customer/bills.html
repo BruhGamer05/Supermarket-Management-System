@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My bills - Customer</title>
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+</head>
+<body>
+  <nav class="topbar" id="topbar"></nav>
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-header__left">
+        <div class="page-header__title">My bills</div>
+        <div class="page-header__desc">Your purchase history.</div>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div id="tableContainer"></div>
+    </div>
+  </main>
+
+  <!-- Feedback modal -->
+  <div id="feedbackOverlay" style="display:none;" class="modal-overlay">
+    <div class="modal">
+      <div class="modal__header">
+        <span class="modal__title">Rate service for bill <span id="fbBillNo"></span></span>
+        <button class="modal__close" id="fbClose">&times;</button>
+      </div>
+      <div class="modal__body">
+        <form id="feedbackForm" novalidate>
+          <div class="form-error-banner" id="fbError"></div>
+          <div class="form-group">
+            <label class="form-label">Rating <span class="required">*</span></label>
+            <div class="rating-select">
+              <input type="radio" name="rating" id="r1" value="1"><label for="r1">1</label>
+              <input type="radio" name="rating" id="r2" value="2"><label for="r2">2</label>
+              <input type="radio" name="rating" id="r3" value="3"><label for="r3">3</label>
+              <input type="radio" name="rating" id="r4" value="4"><label for="r4">4</label>
+              <input type="radio" name="rating" id="r5" value="5"><label for="r5">5</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Comments</label>
+            <textarea id="fbComments" class="form-control" rows="3" placeholder="Optional feedback..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn-secondary" id="fbCancel">Cancel</button>
+        <button class="btn btn-primary" id="fbSubmit">Submit rating</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { renderShell } from '../js/shell.js?v=3';
+  import { requireRole } from '../js/auth.js?v=3';
+  import { api } from '../js/api.js?v=3';
+  import { esc } from '../js/escape.js?v=3';
+  import { inr, date } from '../js/format.js?v=3';
+  import { buildTable } from '../js/table.js?v=3';
+  import { toast, setLoading } from '../js/ui.js?v=3';
+  import { showFormError, clearFormError } from '../js/forms.js?v=3';
+
+  if (!requireRole(['Customer'])) throw new Error();
+  renderShell();
+
+  let allBills = [];
+  let tableCtrl;
+  let ratingBillId = null;
+  const container = document.getElementById('tableContainer');
+
+  async function load() {
+    container.innerHTML = '<div class="state-block"><span class="spinner"></span></div>';
+    try {
+      allBills = await api.get('/bills/');
+      tableCtrl = buildTable(container, allBills, [
+        { key: 'Bill_ID',       label: 'Bill no.', render: r => `<strong>#${esc(r.Bill_ID)}</strong>` },
+        { key: 'Date_Time',     label: 'Date', render: r => esc(date(r.Date_Time)) },
+        { key: 'Amount_Payable',label: 'Amount payable', numeric: true, render: r => inr(r.Amount_Payable) },
+        { key: 'Points_Discount',label: 'Points used', numeric: true,
+          render: r => r.Points_Discount ? inr(r.Points_Discount) : '—' },
+        { key: 'Payment_Method',label: 'Payment' },
+        { key: '_actions', label: '', sortable: false,
+          render: r => `
+            <a href="/app/invoice.html?id=${esc(r.Bill_ID)}" class="btn btn-secondary btn-sm" target="_blank" style="margin-right:6px;">Invoice</a>
+            <button class="btn btn-secondary btn-sm rate-btn" data-id="${esc(r.Bill_ID)}">Rate service</button>
+          ` },
+      ], { emptyMsg: 'No bills found.' });
+
+      // Wire up rate buttons
+      container.addEventListener('click', e => {
+        const btn = e.target.closest('.rate-btn');
+        if (!btn) return;
+        openFeedbackModal(parseInt(btn.dataset.id));
+      });
+    } catch (err) {
+      container.innerHTML = `<div class="state-block"><div class="state-block__title text-danger">Failed to load</div></div>`;
+    }
+  }
+
+  function openFeedbackModal(billId) {
+    ratingBillId = billId;
+    document.getElementById('fbBillNo').textContent = `#${billId}`;
+    document.getElementById('feedbackForm').reset();
+    document.getElementById('fbError').classList.remove('is-visible');
+    document.getElementById('feedbackOverlay').style.display = 'flex';
+  }
+
+  function closeFeedbackModal() {
+    document.getElementById('feedbackOverlay').style.display = 'none';
+    ratingBillId = null;
+  }
+
+  document.getElementById('fbClose').addEventListener('click', closeFeedbackModal);
+  document.getElementById('fbCancel').addEventListener('click', closeFeedbackModal);
+
+  document.getElementById('fbSubmit').addEventListener('click', async () => {
+    if (!ratingBillId) return;
+    const rating = document.querySelector('input[name="rating"]:checked')?.value;
+    if (!rating) {
+      document.getElementById('fbError').textContent = 'Please select a rating.';
+      document.getElementById('fbError').classList.add('is-visible');
+      return;
+    }
+    const btn     = document.getElementById('fbSubmit');
+    const restore = setLoading(btn, 'Submitting...');
+    try {
+      await api.post(`/bills/${ratingBillId}/feedback`, {
+        rating: parseInt(rating),
+        comments: document.getElementById('fbComments').value.trim() || null,
+      });
+      toast('Thank you for your feedback!', 'success');
+      closeFeedbackModal();
+    } catch (err) {
+      document.getElementById('fbError').textContent = err.message;
+      document.getElementById('fbError').classList.add('is-visible');
+    } finally {
+      restore();
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
+

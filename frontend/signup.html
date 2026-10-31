@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create account - Supermarket Management System</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
+    .public-panel { max-width: 480px; }
+  </style>
+</head>
+<body>
+
+  <div class="public-panel">
+    <div class="public-panel__logo">Supermarket System</div>
+    <div class="public-panel__subtitle">Create a customer account</div>
+
+    <p style="font-size:12.5px; margin-bottom:16px; padding:10px 12px; background:var(--info-soft);
+              border-left:3px solid var(--info); border-radius:var(--radius); color:var(--info);">
+      Already a customer but don't have a login? Ask the cashier at the counter to create one for you,
+      or use this form to create an account and link your existing loyalty record.
+    </p>
+
+    <form id="signupForm" novalidate>
+      <div class="form-error-banner" id="signupError"></div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label" for="firstName">First name <span class="required">*</span></label>
+          <input type="text" id="firstName" class="form-control" data-validate="required" placeholder="Anil">
+          <span class="form-error"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="lastName">Last name</label>
+          <input type="text" id="lastName" class="form-control" placeholder="Kumar">
+          <span class="form-error"></span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="phone">Mobile number <span class="required">*</span></label>
+        <input type="tel" id="phone" class="form-control" data-validate="required,phone"
+               placeholder="9820000001" maxlength="10">
+        <span class="form-error"></span>
+        <span class="form-help">10-digit mobile number used to look up loyalty points at billing.</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="username">Username <span class="required">*</span></label>
+        <input type="text" id="username" class="form-control" data-validate="required,minlen:3"
+               placeholder="anil_k" autocomplete="username">
+        <span class="form-error"></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password <span class="required">*</span></label>
+        <input type="password" id="password" class="form-control" data-validate="required,minlen:6"
+               placeholder="Min. 6 characters" autocomplete="new-password">
+        <span class="form-error"></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="confirmPassword">Confirm password <span class="required">*</span></label>
+        <input type="password" id="confirmPassword" class="form-control" data-validate="required"
+               placeholder="Repeat password" autocomplete="new-password">
+        <span class="form-error"></span>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block" id="signupBtn">Create account</button>
+    </form>
+
+    <p style="margin-top: 16px; text-align: center; font-size: 13px;">
+      Already have an account? <a href="index.html">Sign in</a>
+    </p>
+  </div>
+
+  <script type="module">
+    import { api, ApiError } from './js/api.js?v=3';
+    import { validateForm, attachValidation, setFieldError, showFormError, clearFormError } from './js/forms.js?v=3';
+    import { setLoading } from './js/ui.js?v=3';
+
+    const form = document.getElementById('signupForm');
+    const btn  = document.getElementById('signupBtn');
+
+    attachValidation(form);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearFormError(form);
+      if (!validateForm(form)) return;
+
+      const pw  = document.getElementById('password').value;
+      const cpw = document.getElementById('confirmPassword').value;
+      if (pw !== cpw) {
+        setFieldError(document.getElementById('confirmPassword'), 'Passwords do not match.');
+        return;
+      }
+
+      const restore = setLoading(btn, 'Creating account...');
+
+      try {
+        await api.post('/auth/register', {
+          username:   document.getElementById('username').value.trim(),
+          password:   pw,
+          role:       'Customer',
+          first_name: document.getElementById('firstName').value.trim(),
+          last_name:  document.getElementById('lastName').value.trim() || null,
+          phone:      document.getElementById('phone').value.trim(),
+        });
+
+        // Auto-login after registration
+        const loginData = await api.post('/auth/login', {
+          username: document.getElementById('username').value.trim(),
+          password: pw,
+        });
+
+        localStorage.setItem('token', loginData.access_token);
+        localStorage.setItem('role',  loginData.role);
+        window.location.href = '/app/customer/home.html';
+
+      } catch (err) {
+        restore();
+        showFormError(form, err.message || 'Account creation failed. Please try again.');
+      }
+    });
+  </script>
+
+</body>
+</html>
+
