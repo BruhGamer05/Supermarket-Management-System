@@ -136,16 +136,37 @@ def submit_stock_request(
     cur.execute("SELECT Customer_ID FROM Users WHERE User_ID = %s", (user["sub"],))
     row = cur.fetchone()
     if not row or not row["Customer_ID"]:
+        cur.close()
         raise HTTPException(status_code=404, detail="No customer profile linked.")
     cid = row["Customer_ID"]
+
+    item_id = body.item_id
+    req_name = body.requested_item_name.strip() if body.requested_item_name else None
+
+    # Smart auto-linking: if requested_item_name matches an existing catalog item (case-insensitive),
+    # link directly to that Item_ID instead of creating an ambiguous free-text request.
+    if not item_id and req_name:
+        cur.execute("SELECT Item_ID, Item_Name FROM Item WHERE LOWER(TRIM(Item_Name)) = LOWER(TRIM(%s))", (req_name,))
+        match = cur.fetchone()
+        if match:
+            item_id = match["Item_ID"]
+            req_name = None
+
     cur.close()
+
+    if not item_id and not req_name:
+        raise HTTPException(status_code=400, detail="Please select an existing item or provide a product name.")
+
+    # Enforce database XOR check: exactly one of item_id or requested_item_name
+    if item_id and req_name:
+        req_name = None
 
     cur2 = db.cursor()
     try:
         cur2.execute("""
             INSERT INTO Stock_Request (Customer_ID, Item_ID, Requested_Item_Name, Quantity_Requested)
             VALUES (%s, %s, %s, %s)
-        """, (cid, body.item_id, body.requested_item_name, body.quantity_requested))
+        """, (cid, item_id, req_name, body.quantity_requested))
         db.commit()
         req_id = cur2.lastrowid
     except Exception as e:

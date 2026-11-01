@@ -37,6 +37,8 @@ docker-compose up -d
 SOURCE db/01_schema.sql;
 SOURCE db/02_views.sql;
 SOURCE db/03_seed.sql;
+SOURCE db/04_procedures.sql;
+SOURCE db/05_insights.sql;
 ```
 
 ### 2. Set up the Backend Environment
@@ -76,7 +78,8 @@ Use these credentials to log in and test the different roles:
 
 ---
 
-## 📚 API Documentation
-Because we use FastAPI, interactive API documentation is automatically generated.
-Once the server is running, visit:
-**http://localhost:8000/docs** to test all endpoints!
+## 📚 Documentation & Viva Resources
+- **Demo Script & Viva Walkthrough:** See [DEMO.md](DEMO.md) for the exact step-by-step presentation script and viva defense questions.
+- **Visual ER Diagram & Normalization:** See [ER_DIAGRAM.md](ER_DIAGRAM.md) for the Mermaid ER diagram, schema mappings, and 3NF/BCNF proofs.
+- **API Documentation:** Interactive Swagger docs available at **http://localhost:8000/docs**.
+- **Relational Schema:** See [SCHEMA.md](SCHEMA.md) and [new_schema.md](new_schema.md) for table definitions and live MySQL describe output.

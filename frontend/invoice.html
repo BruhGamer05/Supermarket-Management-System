@@ -144,7 +144,7 @@
         api.get('/bills/'),
       ]);
 
-      const header = allBills.find(b => String(b.Bill_ID) === String(id)) || {};
+      const header = billData.bill || allBills.find(b => String(b.Bill_ID) === String(id)) || {};
       const { totals, lines } = billData;
 
       const cgstTotal = Number(totals.GST_Total) / 2;

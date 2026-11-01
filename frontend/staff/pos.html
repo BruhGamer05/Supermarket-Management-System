@@ -463,17 +463,50 @@
   }
 
   function updateTotals() {
-    const redeemPts = parseInt(document.getElementById('redeemPoints').value) || 0;
     let subtotal = 0, gstTotal = 0;
-
     Object.values(cart).forEach(row => {
       subtotal += row.rate * row.qty;
       gstTotal += row.rate * row.qty * (row.gst / 100);
     });
 
-    const grossTotal  = subtotal + gstTotal;
-    const pointsDisc  = Math.min(redeemPts, grossTotal * 0.5);
-    const payable     = Math.max(0, grossTotal - pointsDisc);
+    const grossTotal   = subtotal + gstTotal;
+    const redeemInput  = document.getElementById('redeemPoints');
+    const helpEl       = document.getElementById('redeemHelp');
+    let redeemPts      = parseInt(redeemInput.value) || 0;
+
+    const maxByBalance = loyaltyPts || 0;
+    const maxByBill    = Math.floor(grossTotal * 0.5);
+    const maxAllowed   = Math.min(maxByBalance, maxByBill);
+
+    if (redeemPts < 0) {
+      redeemPts = 0;
+      redeemInput.value = '0';
+    }
+
+    let pointsDisc = 0;
+    if (redeemPts > 0) {
+      if (maxByBalance === 0) {
+        helpEl.innerHTML = `<span class="text-danger">Customer has 0 points (or is walk-in). Cannot redeem.</span>`;
+        pointsDisc = 0;
+      } else if (redeemPts > maxByBalance) {
+        helpEl.innerHTML = `<span class="text-danger">Exceeds balance! Customer only has ${maxByBalance} points.</span>`;
+        pointsDisc = 0;
+      } else if (redeemPts > maxByBill) {
+        helpEl.innerHTML = `<span class="text-danger">Exceeds 50% cap! Max discount is ${inr(maxByBill)} (${maxByBill} pts).</span>`;
+        pointsDisc = 0;
+      } else {
+        helpEl.innerHTML = `<span class="text-success">Applying ${redeemPts} points discount (−${inr(redeemPts)}).</span>`;
+        pointsDisc = redeemPts;
+      }
+    } else if (maxByBalance > 0) {
+      helpEl.innerHTML = `<span class="text-muted">Available: ${maxByBalance} pts (max ${maxAllowed} usable on this bill).</span>`;
+      pointsDisc = 0;
+    } else {
+      helpEl.textContent = '';
+      pointsDisc = 0;
+    }
+
+    const payable = Math.max(0, grossTotal - pointsDisc);
 
     document.getElementById('totSubtotal').textContent = inr(subtotal);
     document.getElementById('totGst').textContent      = inr(gstTotal);
@@ -499,6 +532,18 @@
       }
     } catch (err) {
       updateCustomerInfo(null, 'Lookup failed.');
+    }
+  });
+
+  // Auto-trigger lookup when 10 digits are typed
+  document.getElementById('custPhone').addEventListener('input', (e) => {
+    const val = e.target.value.trim();
+    if (val.length === 10) {
+      document.getElementById('lookupBtn').click();
+    } else if (val.length === 0) {
+      customerID = null; loyaltyPts = 0;
+      document.getElementById('redeemPoints').value = '0';
+      updateCustomerInfo(null);
     }
   });
 
@@ -550,13 +595,34 @@
 
     const btn     = document.getElementById('checkoutBtn');
     const origTxt = btn.textContent;
+
+    const phone  = document.getElementById('custPhone').value.trim() || null;
+    const redeem = parseInt(document.getElementById('redeemPoints').value) || 0;
+    const method = document.getElementById('paymentMethod').value;
+
+    // Strict validation against loyalty abuse before sending to server
+    if (redeem > 0) {
+      if (!phone) {
+        toast('Walk-in bills without mobile cannot redeem points.', 'warning');
+        return;
+      }
+      if (redeem > loyaltyPts) {
+        toast(`Cannot redeem ${redeem} points: Customer only has ${loyaltyPts} points.`, 'error');
+        return;
+      }
+      let billGross = 0;
+      Object.values(cart).forEach(r => billGross += r.rate * r.qty * (1 + r.gst / 100));
+      const max50 = Math.floor(billGross * 0.5);
+      if (redeem > max50) {
+        toast(`Cannot redeem ${redeem} points: Max discount is 50% of the bill (${max50} pts).`, 'warning');
+        return;
+      }
+    }
+
     btn.disabled  = true;
     btn.textContent = 'Processing...';
 
     try {
-      const phone  = document.getElementById('custPhone').value.trim() || null;
-      const redeem = parseInt(document.getElementById('redeemPoints').value) || 0;
-      const method = document.getElementById('paymentMethod').value;
 
       const payload = {
         phone,

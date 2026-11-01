@@ -30,7 +30,7 @@ Mark items [x] when done. Stop at the end of each phase and show the user before
 - [x] Insight views: low stock per item, batches expiring within 30 days / expired, sales by day and month, sales by
   category, top items, top customers, profit per item, employee average rating and bills handled, product demand
   from Stock_Request, restock list (low-stock item with its suppliers from Procures).
-- [ ] SQL stress tests, including two simultaneous bills competing for the last units (must not oversell).
+- [x] SQL stress tests, including two simultaneous bills competing for the last units (must not oversell) — verified with tests/test_concurrency.py.
 
 ## Phase 3 - Backend API
 - [x] Ask the user for the stack (FastAPI or Express) and DB driver; set up project structure and `.env` (not committed).
@@ -60,7 +60,7 @@ Mark items [x] when done. Stop at the end of each phase and show the user before
 - [x] Relational schema regenerated from live DB in MySQL `describe` format → `new_schema.md`.
 - [x] `README.md` written — setup instructions, demo accounts, tech stack, Docker and native MySQL options.
 - [x] GitHub repository created: https://github.com/BruhGamer05/Supermarket-Management-System
-- [ ] Regenerate ER diagram (visual) to match final schema (old Assignment PDFs are outdated).
+- [x] Regenerate ER diagram (visual) to match final schema — documented in ER_DIAGRAM.md with complete Mermaid ER diagram and normalization proofs.
 
 ## Open questions for the user
 See "Still open" in PROJECT.md.

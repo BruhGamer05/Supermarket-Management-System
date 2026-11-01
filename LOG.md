@@ -198,6 +198,44 @@ Get-Content db\04_procedures.sql -Raw | mysql -u root -prootpass supermarket_db
 Get-Content db\05_insights.sql -Raw | mysql -u root -prootpass supermarket_db
 ```
 
+## Session 7 — 2026-11-01 (Final Pre-Demo Audit & Readiness)
+
+### What was done
+1. **Invoice Metadata Enrichment (`app/routes/billing_routes.py` & `frontend/invoice.html`):**
+   - Updated `GET /bills/{bill_id}` to directly return the `bill` header record (`Customer_Name`, `Phone_Number`, `Cashier`, `Payment_Method`, `Date_Time`).
+   - Updated `GET /bills/` when queried by a customer to join `Customer` and `Employee` names so customer invoices cleanly display their real name and cashier instead of fallback labels.
+   - Enhanced `frontend/invoice.html` to consume `billData.bill` directly.
+
+2. **Visual ER Diagram (`ER_DIAGRAM.md`):**
+   - Generated a complete, production-grade Mermaid ER Diagram covering all 14 entities, relationship cardinalities, attributes, keys, and foreign keys.
+   - Documented complete 1NF, 2NF, 3NF, and BCNF normalization proofs and viva defense Q&A.
+
+3. **Concurrency & Oversell Stress Test (`tests/test_concurrency.py`):**
+   - Authored an automated multithreaded concurrency test script simulating simultaneous checkout requests on the final unit of stock, verifying that MySQL `FOR UPDATE` row locks prevent overselling.
+
+4. **Demo Script & Viva Walkthrough (`DEMO.md`):**
+   - Comprehensively updated `DEMO.md` with a complete step-by-step presentation script covering Customer, Cashier, and Owner roles, one-click `start_demo.bat` instructions, and viva answers.
+
+5. **`TODO.md` Completion:**
+   - All phases (Phase 0 through Phase 6) verified and completed (`[x]`).
+
+6. **Loyalty Points Redemption Validation Guard:**
+   - Fixed POS frontend (`frontend/staff/pos.html`): `updateTotals()` now clamps discounts to the customer's actual loyalty balance, shows real-time warning feedback (`Exceeds balance! Customer only has X points`), and prevents checkout submission if points exceed balance or 50% bill cap.
+   - Added auto-lookup on entering 10-digit customer mobile numbers in POS.
+   - Added backend API pre-validation in `app/routes/billing_routes.py` rejecting excessive redemption with clean HTTP 400.
+   - Updated MySQL stored procedure `sp_create_bill` (`db/04_procedures.sql`) to reject excessive redemption with `ROLLBACK` and SQLSTATE `45000`. Verified with `scratch/test_loyalty_fix.py`.
+
+7. **Dual-Mode Stock Requests (Existing Catalog Dropdown + Smart Auto-Matching):**
+   - Updated customer requests page (`frontend/customer/requests.html`) with dual-mode selector:
+     1. *Restock Existing Item:* Dynamically populated dropdown listing all store catalog items with live stock status (e.g. `[Out of stock]` or `[Stock: X]`). Submits exact `item_id`.
+     2. *Request a New Product:* Free-text input for unlisted items (submits `requested_item_name`).
+   - Updated backend API (`app/routes/customer_routes.py`): If a user types into the new product text box but enters the name of an existing item (e.g. 'basmati rice' or 'almonds'), the server automatically performs a case-insensitive lookup on `Item` and cleanly links it to `Item_ID`, leaving `Requested_Item_Name = NULL` to satisfy the database XOR constraint `CHECK ((Item_ID IS NOT NULL) <> (Requested_Item_Name IS NOT NULL))`.
+   - Updated `DEMO.md` presentation script.
+
+8. **Team Master Manual & Publication-Grade PDF (`PROJECT_MASTER_GUIDE.md`, `.tex`, `.pdf`):**
+   - Authored an exhaustive 54 KB technical manual covering the complete wholesale business domain, 3-tier architecture, file anatomy, 14 tables, 13 views, formal 1NF to BCNF normalization proofs, concurrency locking, stored procedures, financial GST formulas, security, and the top 25 toughest viva questions with model answers.
+   - Generated LaTeX source (`PROJECT_MASTER_GUIDE.tex`) and compiled a publication-grade vector PDF (`PROJECT_MASTER_GUIDE.pdf`, ~670 KB) via Chrome headless for distribution to teammates.
+
 ---
 
 _Log maintained by the AI agent. Updated after each session._
@@ -354,10 +392,6 @@ Note: An accidental `git remote add origit ...` was immediately cleaned up with 
 
 ---
 
-### Remaining items (not yet done)
-- SQL stress test: two concurrent bills competing for last units of the same batch.
-- ER diagram (visual) regeneration to match the final schema.
-
 ---
 
 ## Session 6 — 2026-10-31
@@ -372,6 +406,44 @@ Note: An accidental `git remote add origit ...` was immediately cleaned up with 
 2. **Full End-to-End Test Suite Execution (`scratch/run_exhaustive_tests.py`):**
    - Executed 29 automated test cases covering authentication, Owner suite, Cashier suite, Customer suite, and RBAC security boundaries.
    - Result: 29/29 tests passed (0 failures).
+
+## Session 7 — 2026-11-01 (Final Pre-Demo Audit & Readiness)
+
+### What was done
+1. **Invoice Metadata Enrichment (`app/routes/billing_routes.py` & `frontend/invoice.html`):**
+   - Updated `GET /bills/{bill_id}` to directly return the `bill` header record (`Customer_Name`, `Phone_Number`, `Cashier`, `Payment_Method`, `Date_Time`).
+   - Updated `GET /bills/` when queried by a customer to join `Customer` and `Employee` names so customer invoices cleanly display their real name and cashier instead of fallback labels.
+   - Enhanced `frontend/invoice.html` to consume `billData.bill` directly.
+
+2. **Visual ER Diagram (`ER_DIAGRAM.md`):**
+   - Generated a complete, production-grade Mermaid ER Diagram covering all 14 entities, relationship cardinalities, attributes, keys, and foreign keys.
+   - Documented complete 1NF, 2NF, 3NF, and BCNF normalization proofs and viva defense Q&A.
+
+3. **Concurrency & Oversell Stress Test (`tests/test_concurrency.py`):**
+   - Authored an automated multithreaded concurrency test script simulating simultaneous checkout requests on the final unit of stock, verifying that MySQL `FOR UPDATE` row locks prevent overselling.
+
+4. **Demo Script & Viva Walkthrough (`DEMO.md`):**
+   - Comprehensively updated `DEMO.md` with a complete step-by-step presentation script covering Customer, Cashier, and Owner roles, one-click `start_demo.bat` instructions, and viva answers.
+
+5. **`TODO.md` Completion:**
+   - All phases (Phase 0 through Phase 6) verified and completed (`[x]`).
+
+6. **Loyalty Points Redemption Validation Guard:**
+   - Fixed POS frontend (`frontend/staff/pos.html`): `updateTotals()` now clamps discounts to the customer's actual loyalty balance, shows real-time warning feedback (`Exceeds balance! Customer only has X points`), and prevents checkout submission if points exceed balance or 50% bill cap.
+   - Added auto-lookup on entering 10-digit customer mobile numbers in POS.
+   - Added backend API pre-validation in `app/routes/billing_routes.py` rejecting excessive redemption with clean HTTP 400.
+   - Updated MySQL stored procedure `sp_create_bill` (`db/04_procedures.sql`) to reject excessive redemption with `ROLLBACK` and SQLSTATE `45000`. Verified with `scratch/test_loyalty_fix.py`.
+
+7. **Dual-Mode Stock Requests (Existing Catalog Dropdown + Smart Auto-Matching):**
+   - Updated customer requests page (`frontend/customer/requests.html`) with dual-mode selector:
+     1. *Restock Existing Item:* Dynamically populated dropdown listing all store catalog items with live stock status (e.g. `[Out of stock]` or `[Stock: X]`). Submits exact `item_id`.
+     2. *Request a New Product:* Free-text input for unlisted items (submits `requested_item_name`).
+   - Updated backend API (`app/routes/customer_routes.py`): If a user types into the new product text box but enters the name of an existing item (e.g. 'basmati rice' or 'almonds'), the server automatically performs a case-insensitive lookup on `Item` and cleanly links it to `Item_ID`, leaving `Requested_Item_Name = NULL` to satisfy the database XOR constraint `CHECK ((Item_ID IS NOT NULL) <> (Requested_Item_Name IS NOT NULL))`.
+   - Updated `DEMO.md` presentation script.
+
+8. **Team Master Manual & Publication-Grade PDF (`PROJECT_MASTER_GUIDE.md`, `.tex`, `.pdf`):**
+   - Authored an exhaustive 54 KB technical manual covering the complete wholesale business domain, 3-tier architecture, file anatomy, 14 tables, 13 views, formal 1NF to BCNF normalization proofs, concurrency locking, stored procedures, financial GST formulas, security, and the top 25 toughest viva questions with model answers.
+   - Generated LaTeX source (`PROJECT_MASTER_GUIDE.tex`) and compiled a publication-grade vector PDF (`PROJECT_MASTER_GUIDE.pdf`, ~670 KB) via Chrome headless for distribution to teammates.
 
 ---
 

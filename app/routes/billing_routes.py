@@ -52,6 +52,26 @@ def create_bill(
 
     cur = db.cursor(dictionary=True)
     try:
+        # Pre-validation for loyalty points redemption
+        if body.redeem_points > 0:
+            if not body.phone:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Walk-in customers without a mobile number cannot redeem loyalty points."
+                )
+            cur.execute("SELECT Customer_ID, First_Name, Loyalty_Points FROM Customer WHERE Phone_Number = %s", (body.phone,))
+            cust_row = cur.fetchone()
+            if not cust_row:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Customer not found in system. New customers have 0 loyalty points and cannot redeem."
+                )
+            if body.redeem_points > cust_row["Loyalty_Points"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot redeem {body.redeem_points} points: Customer {cust_row['First_Name']} only has {cust_row['Loyalty_Points']} points."
+                )
+
         cur.callproc("sp_create_bill", [
             body.phone, body.employee_id, body.payment_method,
             items_json, body.redeem_points
@@ -60,6 +80,9 @@ def create_bill(
         for result in cur.stored_results():
             row = result.fetchone()
             return row
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -86,8 +109,13 @@ def list_bills(
             return []
         cur.execute("""
             SELECT b.Bill_ID, b.Date_Time, b.Payment_Method,
+                   CONCAT(c.First_Name,' ',COALESCE(c.Last_Name,'')) AS Customer_Name,
+                   c.Phone_Number,
+                   e.Name AS Cashier,
                    vbt.Gross_Total, vbt.Points_Discount, vbt.Amount_Payable
             FROM Bill b
+            JOIN Customer c ON c.Customer_ID = b.Customer_ID
+            LEFT JOIN Employee e ON e.Employee_ID = b.Employee_ID
             JOIN v_bill_totals vbt ON vbt.Bill_ID = b.Bill_ID
             WHERE b.Customer_ID = %s
             ORDER BY b.Date_Time DESC
@@ -124,6 +152,18 @@ def get_bill(bill_id: int, db: MySQLConnection = Depends(get_db), user=Depends(g
         if not bill_owner or bill_owner["Customer_ID"] != row["Customer_ID"]:
             raise HTTPException(status_code=403, detail="Access denied.")
 
+    cur.execute("""
+        SELECT b.Bill_ID, b.Date_Time, b.Payment_Method,
+               CONCAT(c.First_Name,' ',COALESCE(c.Last_Name,'')) AS Customer_Name,
+               c.Phone_Number,
+               e.Name AS Cashier
+        FROM Bill b
+        LEFT JOIN Customer c ON c.Customer_ID = b.Customer_ID
+        LEFT JOIN Employee e ON e.Employee_ID = b.Employee_ID
+        WHERE b.Bill_ID = %s
+    """, (bill_id,))
+    bill_header = cur.fetchone()
+
     cur.execute("SELECT * FROM v_bill_lines WHERE Bill_ID = %s", (bill_id,))
     lines = cur.fetchall()
     cur.execute("SELECT * FROM v_bill_totals WHERE Bill_ID = %s", (bill_id,))
@@ -132,7 +172,7 @@ def get_bill(bill_id: int, db: MySQLConnection = Depends(get_db), user=Depends(g
 
     if not totals:
         raise HTTPException(status_code=404, detail="Bill not found.")
-    return {"totals": totals, "lines": lines}
+    return {"bill": bill_header, "totals": totals, "lines": lines}
 
 
 @router.post("/{bill_id}/feedback", status_code=201)

@@ -192,7 +192,13 @@ BEGIN
         SELECT FLOOR(SUM(Line_Total) * 0.5) INTO v_max_redeem
         FROM v_bill_lines WHERE Bill_ID = v_new_bill_id;
 
-        SET v_actual_redeem = LEAST(p_redeem_points, v_max_redeem, v_loyalty_bal);
+        IF p_redeem_points > v_max_redeem THEN
+            ROLLBACK;
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Loyalty redemption exceeds 50% of the bill total.';
+        END IF;
+
+        SET v_actual_redeem = p_redeem_points;
 
         -- Log redemption (negative Points_Change = points leaving the account)
         INSERT INTO Loyalty_Transaction (Customer_ID, Bill_ID, Txn_Type, Points_Change, Txn_Date)
